@@ -1,3 +1,4 @@
+#include <fstream>
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
 #include <iostream>
@@ -7,6 +8,7 @@
 #include <linux/i2c-dev.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #else
 // Windows dummy I2C implementation
 #define O_RDWR 0
