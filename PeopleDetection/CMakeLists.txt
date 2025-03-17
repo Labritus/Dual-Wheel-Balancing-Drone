@@ -9,7 +9,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
 endif()
 
 # Find OpenCV package
-find_package(OpenCV 4.9.0 REQUIRED COMPONENTS core dnn)
+find_package(OpenCV 4.9.0 REQUIRED COMPONENTS core dnn highgui videoio imgcodecs)
 
 # Include OpenCV headers
 include_directories(${OpenCV_INCLUDE_DIRS})
@@ -29,7 +29,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Raspberry Pi specific libraries
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
     find_package(Threads REQUIRED)
-    target_link_libraries(faceEyeDetection Threads::Threads)
     target_link_libraries(peopleDetection Threads::Threads)
     target_link_libraries(camtest Threads::Threads)
 endif()
