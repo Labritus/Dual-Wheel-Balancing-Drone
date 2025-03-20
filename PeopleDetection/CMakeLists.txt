@@ -11,19 +11,24 @@ endif()
 # Find OpenCV package
 find_package(OpenCV 4.9.0 REQUIRED COMPONENTS core dnn highgui videoio imgcodecs)
 
-# Include OpenCV headers
+# Find libcamera package
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBCAMERA REQUIRED libcamera)
+
+# Include headers
 include_directories(${OpenCV_INCLUDE_DIRS})
+include_directories(${LIBCAMERA_INCLUDE_DIRS})
 
 # Add executables
 add_executable(peopleDetection peopleDetection.cpp)
 add_executable(camtest Camtest.cpp)
 
-# Link OpenCV libraries
-target_link_libraries(peopleDetection ${OpenCV_LIBS})
+# Link libraries
+target_link_libraries(peopleDetection ${OpenCV_LIBS} ${LIBCAMERA_LIBRARIES})
 target_link_libraries(camtest ${OpenCV_LIBS})
 
 # Set C++ standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Raspberry Pi specific libraries

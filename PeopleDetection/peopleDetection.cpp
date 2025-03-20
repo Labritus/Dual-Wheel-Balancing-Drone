@@ -1,7 +1,20 @@
 #include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <chrono>
+#include <memory>
+#include <vector>
+#include <thread>
+#include <atomic>
+#include <signal.h>
+
+// OpenCV related
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
-#include <iostream>
+
+// Libcamera related
+#include <libcamera/libcamera.h>
 
 // Platform detection
 #if defined(__linux__)
@@ -20,43 +33,268 @@ ssize_t write(int, const void*, size_t) { return 0; }
 #endif
 
 using namespace cv;
-using namespace dnn;
+using namespace cv::dnn;
 using namespace std;
+using namespace libcamera;
+using namespace std::chrono_literals;
 
-// Initialize the parameters
+// Global variables
+atomic<bool> g_running{true};
+atomic<bool> g_personDetected{false};
+
+// Neural network parameters
 float confThreshold = 0.5; // Confidence threshold
 float nmsThreshold = 0.4;  // Non-maximum suppression threshold
 int inpWidth = 300;        // Width of network's input image
 int inpHeight = 300;       // Height of network's input image
-vector<string> classes;
+vector<string> classes;    // Class list
 
-// I2C Configuration
+// I2C configuration
 const char *I2C_DEVICE = "/dev/i2c-1";
 const int STM32_ADDRESS = 0x08; // STM32 I2C address
 int i2cFile;
 
-// Remove the bounding boxes with low confidence using non-maxima suppression
+// Function declarations
+void processCameraFrame(cv::Mat& frame, Net& net);
 void postprocess(Mat& frame, const vector<Mat>& outs);
-
-// Draw the predicted bounding box and send I2C message if person detected
 void drawPred(int classId, float conf, int left, int top, int right, int bottom, Mat& frame);
-
-// Get the names of the output layers
 vector<String> getOutputsNames(const Net& net);
+void sendI2CMessage(const string& message);
+void signalHandler(int signum);
 
-// Function to send I2C message
-void sendI2CMessage(const string& message) {
-#if defined(__linux__)
-    if (write(i2cFile, message.c_str(), message.length()) != message.length()) {
-        cerr << "Failed to write to the I2C bus" << endl;
+class PeopleDetector {
+private:
+    std::unique_ptr<libcamera::CameraManager> mCameraManager;
+    std::shared_ptr<libcamera::Camera> mCamera;
+    std::unique_ptr<libcamera::CameraConfiguration> mConfig;
+    FrameBufferAllocator *mAllocator;
+    std::vector<std::unique_ptr<libcamera::Request>> mRequests;
+    std::map<libcamera::FrameBuffer *, uint8_t*> mMappedBuffers;
+    Net mNet;
+    
+    bool setupCamera() {
+        mCameraManager = std::make_unique<CameraManager>();
+        int ret = mCameraManager->start();
+        if (ret) {
+            cerr << "Failed to start camera manager: " << ret << endl;
+            return false;
+        }
+
+        // Get the first available camera
+        auto cameras = mCameraManager->cameras();
+        if (cameras.empty()) {
+            cerr << "No cameras available" << endl;
+            return false;
+        }
+        
+        mCamera = cameras[0];
+        ret = mCamera->acquire();
+        if (ret) {
+            cerr << "Failed to acquire camera: " << ret << endl;
+            return false;
+        }
+        
+        // Configure camera parameters
+        mConfig = mCamera->generateConfiguration({StreamRole::Viewfinder});
+        if (!mConfig) {
+            cerr << "Failed to generate camera configuration" << endl;
+            return false;
+        }
+        
+        StreamConfiguration &streamConfig = mConfig->at(0);
+        cout << "Default viewfinder configuration: " << streamConfig.toString() << endl;
+        
+        // Set resolution and format
+        streamConfig.size.width = 640;
+        streamConfig.size.height = 480;
+        streamConfig.pixelFormat = libcamera::formats::RGB888;
+        streamConfig.bufferCount = 4;
+        
+        ret = mConfig->validate();
+        if (ret) {
+            cerr << "Failed to validate camera configuration: " << ret << endl;
+            return false;
+        }
+        
+        ret = mCamera->configure(mConfig.get());
+        if (ret) {
+            cerr << "Failed to configure camera: " << ret << endl;
+            return false;
+        }
+        
+        cout << "Camera configured successfully" << endl;
+        
+        // Create frame buffer allocator
+        mAllocator = new FrameBufferAllocator(mCamera);
+        
+        for (StreamConfiguration &cfg : *mConfig) {
+            ret = mAllocator->allocate(cfg.stream());
+            if (ret < 0) {
+                cerr << "Failed to allocate buffers for stream" << endl;
+                return false;
+            }
+            
+            const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(cfg.stream());
+            cout << "Allocated " << buffers.size() << " buffers for stream" << endl;
+        }
+        
+        return true;
     }
-#else
-    cout << "[I2C Simulation] Sending message: " << message << endl;
-#endif
-}
+    
+    // Process captured requests
+    void requestComplete(libcamera::Request *request) {
+        if (request->status() == libcamera::Request::RequestCancelled)
+            return;
+            
+        libcamera::FrameBuffer *buffer = request->buffers().begin()->second;
+        const libcamera::FrameMetadata &metadata = buffer->metadata();
+        
+        // Convert buffer data to OpenCV Mat
+        cv::Mat frame(mConfig->at(0).size.height, mConfig->at(0).size.width, 
+                      CV_8UC3, mMappedBuffers[buffer]);
+        
+        // Process image
+        processCameraFrame(frame, mNet);
+        
+        // Display image
+        cv::imshow("People Detection", frame);
+        cv::waitKey(1);
+        
+        // Requeue this request for reuse
+        request->reuse(Request::ReuseBuffers);
+        if (g_running) {
+            mCamera->queueRequest(request);
+        }
+    }
 
+public:
+    PeopleDetector() : mAllocator(nullptr) {}
+    
+    ~PeopleDetector() {
+        // Stop the camera
+        if (mCamera) {
+            mCamera->stop();
+            mCamera->release();
+        }
+        
+        // Release buffers
+        for (auto &p : mMappedBuffers) {
+            munmap(p.second, mConfig->at(0).frameSize);
+        }
+        mMappedBuffers.clear();
+        
+        // Free allocator
+        delete mAllocator;
+        
+        // Clean up camera manager
+        if (mCameraManager)
+            mCameraManager->stop();
+    }
+
+    bool initialize() {
+        // Load class names
+        string classesFile = "coco.names";
+        ifstream ifs(classesFile.c_str());
+        if (!ifs.is_open()) {
+            cerr << "Could not open classes file: " << classesFile << endl;
+            return false;
+        }
+        
+        string line;
+        while (getline(ifs, line)) classes.push_back(line);
+        
+        // Load model
+        String modelConfiguration = "deploy.prototxt";
+        String modelWeights = "mobilenet_iter_73000.caffemodel";
+        
+        try {
+            mNet = readNetFromCaffe(modelConfiguration, modelWeights);
+            mNet.setPreferableBackend(DNN_BACKEND_OPENCV);
+            mNet.setPreferableTarget(DNN_TARGET_CPU);
+        } catch (const cv::Exception& e) {
+            cerr << "Exception loading model: " << e.what() << endl;
+            return false;
+        }
+        
+        // Setup camera
+        if (!setupCamera()) {
+            return false;
+        }
+        
+        // Map buffers
+        for (StreamConfiguration &cfg : *mConfig) {
+            Stream *stream = cfg.stream();
+            const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
+            
+            for (unsigned int i = 0; i < buffers.size(); ++i) {
+                const std::unique_ptr<FrameBuffer> &buffer = buffers[i];
+                
+                // Map buffer memory
+                const FrameBuffer::Plane &plane = buffer->planes()[0];
+                void *memory = mmap(NULL, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+                if (memory == MAP_FAILED) {
+                    cerr << "Failed to mmap buffer" << endl;
+                    return false;
+                }
+                
+                mMappedBuffers[buffer.get()] = static_cast<uint8_t*>(memory);
+                
+                // Create request
+                std::unique_ptr<Request> request = mCamera->createRequest();
+                if (!request) {
+                    cerr << "Failed to create request" << endl;
+                    return false;
+                }
+                
+                int ret = request->addBuffer(stream, buffer.get());
+                if (ret < 0) {
+                    cerr << "Failed to add buffer to request" << endl;
+                    return false;
+                }
+                
+                mRequests.push_back(std::move(request));
+            }
+        }
+        
+        cout << "Initialization complete" << endl;
+        return true;
+    }
+    
+    void start() {
+        // Set request completed callback
+        mCamera->requestCompleted.connect(this, &PeopleDetector::requestComplete);
+        
+        // Start camera
+        int ret = mCamera->start();
+        if (ret) {
+            cerr << "Failed to start camera: " << ret << endl;
+            return;
+        }
+        
+        // Queue all requests
+        for (std::unique_ptr<Request> &request : mRequests) {
+            mCamera->queueRequest(request.release());
+        }
+        
+        cout << "Camera started successfully" << endl;
+        
+        // Main loop - keep application running until signal is received
+        while (g_running) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        
+        // Stop camera
+        mCamera->stop();
+    }
+};
+
+// Main function
 int main(int argc, char** argv)
 {
+    // Set up signal handling
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+    
     // Check OpenCV version
     cout << "OpenCV version: " << CV_VERSION << endl;
 
@@ -75,76 +313,52 @@ int main(int argc, char** argv)
     i2cFile = 1;
 #endif
 
-    // Load names of classes
-    string classesFile = "coco.names";
-    ifstream ifs(classesFile.c_str());
-    string line;
-    while (getline(ifs, line)) classes.push_back(line);
-    
-    // Give the configuration and weight files for the model
-    String modelConfiguration = "deploy.prototxt";
-    String modelWeights = "mobilenet_iter_73000.caffemodel";
-    
-    // Load the network
-    Net net = readNetFromCaffe(modelConfiguration, modelWeights);
-    net.setPreferableBackend(DNN_BACKEND_OPENCV);
-    net.setPreferableTarget(DNN_TARGET_CPU);
-
-    // Open a video file or an image file or a camera stream
-    string str, outputFile;
-    VideoCapture cap;
-    VideoWriter video;
-    Mat frame, blob;
-    
-    try {
-        cap.open(0); // Open the default camera
-    }
-    catch(...) {
-        cout << "Could not open camera" << endl;
+    // Create and initialize people detector
+    PeopleDetector detector;
+    if (!detector.initialize()) {
+        cerr << "Failed to initialize detector" << endl;
+        close(i2cFile);
         return -1;
     }
-
-    while (waitKey(1) < 0)
-    {
-        // Get frame from the video
-        cap >> frame;
-        
-        // Stop the program if reached end of video
-        if (frame.empty()) {
-            cout << "Done processing !!!" << endl;
-            break;
-        }
-        
-        // Create a 4D blob from a frame
-        blobFromImage(frame, blob, 1/127.5, Size(inpWidth, inpHeight), Scalar(127.5, 127.5, 127.5), true, false);
-        
-        // Sets the input to the network
-        net.setInput(blob);
-        
-        // Runs the forward pass to get output of the output layers
-        vector<Mat> outs;
-        net.forward(outs, getOutputsNames(net));
-        
-        // Remove the bounding boxes with low confidence
-        postprocess(frame, outs);
-        
-        // Put efficiency information
-        vector<double> layersTimes;
-        double freq = getTickFrequency() / 1000;
-        double t = net.getPerfProfile(layersTimes) / freq;
-        string label = format("Inference time: %.2f ms", t);
-        putText(frame, label, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255));
-        
-        // Write the frame with the detection boxes
-        imshow("People Detection", frame);
-    }
     
-    cap.release();
+    // Start detection
+    detector.start();
+    
     close(i2cFile); // Close I2C connection
     return 0;
 }
 
-// Remove the bounding boxes with low confidence using non-maxima suppression
+// Signal handling function
+void signalHandler(int signum) {
+    cout << "Interrupt signal (" << signum << ") received.\n";
+    g_running = false;
+}
+
+// Process camera frame
+void processCameraFrame(cv::Mat& frame, Net& net) {
+    // Create 4D blob from frame
+    Mat blob;
+    blobFromImage(frame, blob, 1/127.5, Size(inpWidth, inpHeight), Scalar(127.5, 127.5, 127.5), true, false);
+    
+    // Set network input
+    net.setInput(blob);
+    
+    // Run forward pass to get output of the output layers
+    vector<Mat> outs;
+    net.forward(outs, getOutputsNames(net));
+    
+    // Remove bounding boxes with low confidence
+    postprocess(frame, outs);
+    
+    // Display performance information
+    vector<double> layersTimes;
+    double freq = getTickFrequency() / 1000;
+    double t = net.getPerfProfile(layersTimes) / freq;
+    string label = format("Inference time: %.2f ms", t);
+    putText(frame, label, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255));
+}
+
+// Remove low confidence bounding boxes using non-maximum suppression
 void postprocess(Mat& frame, const vector<Mat>& outs)
 {
     vector<int> classIds;
@@ -153,9 +367,8 @@ void postprocess(Mat& frame, const vector<Mat>& outs)
     
     for (size_t i = 0; i < outs.size(); ++i)
     {
-        // Scan through all the bounding boxes output from the network and keep only the
-        // ones with high confidence scores. Assign the box's class label as the class
-        // with the highest score for the box.
+        // Scan through all bounding boxes output from the network and keep only the ones with high confidence scores
+        // Assign the box's class label as the class with the highest score
         float* data = (float*)outs[i].data;
         for (int j = 0; j < outs[i].rows; ++j, data += outs[i].cols)
         {
@@ -180,10 +393,10 @@ void postprocess(Mat& frame, const vector<Mat>& outs)
         }
     }
     
-    // Perform non maximum suppression to eliminate redundant overlapping boxes with
-    // lower confidences
+    // Perform non-maximum suppression to eliminate redundant overlapping boxes with lower confidences
     vector<int> indices;
     NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
+    g_personDetected = false;
     for (size_t i = 0; i < indices.size(); ++i)
     {
         int idx = indices[i];
@@ -193,7 +406,7 @@ void postprocess(Mat& frame, const vector<Mat>& outs)
     }
 }
 
-// Draw the predicted bounding box and send I2C message if person detected
+// Draw predicted bounding box and send I2C message if person is detected
 void drawPred(int classId, float conf, int left, int top, int right, int bottom, Mat& frame)
 {
     // Only draw person class (classId 0)
@@ -215,11 +428,14 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
         top = max(top, labelSize.height);
         rectangle(frame, Point(left, top - round(1.5*labelSize.height)),
                   Point(left + round(1.5*labelSize.width), top + baseLine), Scalar(255, 255, 255), FILLED);
-        putText(frame, label, Point(left, top), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0,0,0),1);
+        putText(frame, label, Point(left, top), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0,0,0), 1);
         
         // Send I2C message when person is detected
-        string message = "PERSON_DETECTED";
-        sendI2CMessage(message);
+        if (!g_personDetected) {
+            string message = "PERSON_DETECTED";
+            sendI2CMessage(message);
+            g_personDetected = true;
+        }
     }
 }
 
@@ -241,4 +457,15 @@ vector<String> getOutputsNames(const Net& net)
             names[i] = layersNames[outLayers[i] - 1];
     }
     return names;
+}
+
+// Function to send I2C message
+void sendI2CMessage(const string& message) {
+#if defined(__linux__)
+    if (write(i2cFile, message.c_str(), message.length()) != message.length()) {
+        cerr << "Failed to write to the I2C bus" << endl;
+    }
+#else
+    cout << "[I2C Simulation] Sending message: " << message << endl;
+#endif
 }
