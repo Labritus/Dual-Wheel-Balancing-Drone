@@ -356,7 +356,7 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
     double freq = getTickFrequency() / 1000;
     double t = net.getPerfProfile(layersTimes) / freq;
     string label = format("Inference time: %.2f ms", t);
-    putText(frame, label, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255));
+    putText(frame, label, cv::Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255));
 }
 
 // Remove low confidence bounding boxes using non-maximum suppression
