@@ -2,6 +2,8 @@
 #include <chrono>
 #include <thread>
 #include <signal.h>
+#include <atomic>
+#include <sys/mman.h>
 
 #include <libcamera/libcamera.h>
 #include <opencv2/opencv.hpp>
