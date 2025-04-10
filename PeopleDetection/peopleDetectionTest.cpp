@@ -179,8 +179,9 @@ private:
                 cv::cvtColor(yuyv, sourceFrame, cv::COLOR_YUV2BGR_YUYV);
             } else if (mConfig->at(0).pixelFormat == libcamera::formats::MJPEG) {
                 // For MJPEG format
+                const FrameMetadata::Plane &metadataPlane = metadata.planes().at(0);
                 std::vector<uint8_t> jpegData(mMappedBuffers[buffer], 
-                                             mMappedBuffers[buffer] + buffer->metadata().planes[0].bytesused);
+                                             mMappedBuffers[buffer] + metadataPlane.bytesused);
                 
                 sourceFrame = cv::imdecode(jpegData, cv::IMREAD_COLOR);
             } else {
