@@ -314,7 +314,10 @@ public:
                     cout << "Disabled fusion for the network" << endl;
                     
                     // 然后加载权重文件
-                    mNet.setInput(Mat::zeros(1, 3, 300, 300, CV_32F));
+                    // 创建一个正确的4D张量作为输入 [batch_size, channels, height, width]
+                    vector<int> inputDims = {1, 3, 300, 300};
+                    Mat dummyInput = Mat::zeros(inputDims, CV_32F);
+                    mNet.setInput(dummyInput);
                     vector<Mat> dummy;
                     mNet.forward(dummy, getOutputsNames(mNet));
                     cout << "Pre-initialized network" << endl;
