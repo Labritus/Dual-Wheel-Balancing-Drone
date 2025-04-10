@@ -22,10 +22,12 @@ include_directories(${LIBCAMERA_INCLUDE_DIRS})
 # Add executables
 add_executable(peopleDetection peopleDetection.cpp)
 add_executable(camtest Camtest.cpp)
+add_executable(peopleDetectionTest peopleDetectionTest.cpp)
 
 # Link libraries
 target_link_libraries(peopleDetection ${OpenCV_LIBS} ${LIBCAMERA_LIBRARIES})
-target_link_libraries(camtest ${OpenCV_LIBS})
+target_link_libraries(camtest ${OpenCV_LIBS} ${LIBCAMERA_LIBRARIES})
+target_link_libraries(peopleDetectionTest ${OpenCV_LIBS} ${LIBCAMERA_LIBRARIES})
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -36,4 +38,5 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
     find_package(Threads REQUIRED)
     target_link_libraries(peopleDetection Threads::Threads)
     target_link_libraries(camtest Threads::Threads)
+    target_link_libraries(peopleDetectionTest Threads::Threads)
 endif()
