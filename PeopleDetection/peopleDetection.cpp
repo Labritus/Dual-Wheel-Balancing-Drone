@@ -338,14 +338,14 @@ void signalHandler(int signum) {
 // Process camera frame
 void processCameraFrame(cv::Mat& frame, Net& net) {
     // Create 4D blob from frame
-    Mat blob;
-    blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), Scalar(127.5, 127.5, 127.5), true, false);
+    cv::Mat blob;
+    blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), cv::Scalar(127.5, 127.5, 127.5), true, false);
     
     // Set network input
     net.setInput(blob);
     
     // Run forward pass to get output of the output layers
-    vector<Mat> outs;
+    vector<cv::Mat> outs;
     net.forward(outs, getOutputsNames(net));
     
     // Remove bounding boxes with low confidence
@@ -356,15 +356,15 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
     double freq = getTickFrequency() / 1000;
     double t = net.getPerfProfile(layersTimes) / freq;
     string label = format("Inference time: %.2f ms", t);
-    putText(frame, label, cv::Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255));
+    putText(frame, label, cv::Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
 }
 
 // Remove low confidence bounding boxes using non-maximum suppression
-void postprocess(Mat& frame, const vector<Mat>& outs)
+void postprocess(cv::Mat& frame, const vector<cv::Mat>& outs)
 {
     vector<int> classIds;
     vector<float> confidences;
-    vector<Rect> boxes;
+    vector<cv::Rect> boxes;
     
     for (size_t i = 0; i < outs.size(); ++i)
     {
@@ -373,11 +373,11 @@ void postprocess(Mat& frame, const vector<Mat>& outs)
         float* data = (float*)outs[i].data;
         for (int j = 0; j < outs[i].rows; ++j, data += outs[i].cols)
         {
-            Mat scores = outs[i].row(j).colRange(5, outs[i].cols);
-            Point classIdPoint;
+            cv::Mat scores = outs[i].row(j).colRange(5, outs[i].cols);
+            cv::Point classIdPoint;
             double confidence;
             // Get the value and location of the maximum score
-            minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
+            cv::minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
             if (confidence > confThreshold)
             {
                 int centerX = (int)(data[0] * frame.cols);
@@ -389,31 +389,31 @@ void postprocess(Mat& frame, const vector<Mat>& outs)
                 
                 classIds.push_back(classIdPoint.x);
                 confidences.push_back((float)confidence);
-                boxes.push_back(Rect(left, top, width, height));
+                boxes.push_back(cv::Rect(left, top, width, height));
             }
         }
     }
     
     // Perform non-maximum suppression to eliminate redundant overlapping boxes with lower confidences
     vector<int> indices;
-    NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
+    cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
     g_personDetected = false;
     for (size_t i = 0; i < indices.size(); ++i)
     {
         int idx = indices[i];
-        Rect box = boxes[idx];
+        cv::Rect box = boxes[idx];
         drawPred(classIds[idx], confidences[idx], box.x, box.y,
                  box.x + box.width, box.y + box.height, frame);
     }
 }
 
 // Draw predicted bounding box and send I2C message if person is detected
-void drawPred(int classId, float conf, int left, int top, int right, int bottom, Mat& frame)
+void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat& frame)
 {
     // Only draw person class (classId 0)
     if (classId == 0) {
         // Draw a rectangle displaying the bounding box
-        rectangle(frame, Point(left, top), Point(right, bottom), Scalar(255, 178, 50), 3);
+        rectangle(frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
         
         // Get the label for the class name and its confidence
         string label = format("%.2f", conf);
@@ -425,11 +425,11 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
         
         // Display the label at the top of the bounding box
         int baseLine;
-        Size labelSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+        cv::Size labelSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
         top = max(top, labelSize.height);
-        rectangle(frame, Point(left, top - round(1.5*labelSize.height)),
-                  Point(left + round(1.5*labelSize.width), top + baseLine), Scalar(255, 255, 255), FILLED);
-        putText(frame, label, Point(left, top), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(0,0,0), 1);
+        rectangle(frame, cv::Point(left, top - round(1.5*labelSize.height)),
+                  cv::Point(left + round(1.5*labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
+        putText(frame, label, cv::Point(left, top), FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0,0,0), 1);
         
         // Send I2C message when person is detected
         if (!g_personDetected) {
