@@ -135,27 +135,59 @@ private:
     
     // Process captured requests
     void requestComplete(libcamera::Request *request) {
-        if (request->status() == libcamera::Request::RequestCancelled)
+        if (!request || request->status() == libcamera::Request::RequestCancelled) {
             return;
+        }
             
-        libcamera::FrameBuffer *buffer = request->buffers().begin()->second;
+        auto buffers = request->buffers();
+        if (buffers.empty()) {
+            cerr << "No buffers in request" << endl;
+            return;
+        }
+            
+        libcamera::FrameBuffer *buffer = buffers.begin()->second;
+        if (!buffer) {
+            cerr << "Invalid buffer" << endl;
+            return;
+        }
+            
+        // Check if buffer is mapped
+        if (mMappedBuffers.find(buffer) == mMappedBuffers.end()) {
+            cerr << "Buffer not mapped" << endl;
+            return;
+        }
+            
+        // Get buffer metadata
         const libcamera::FrameMetadata &metadata = buffer->metadata();
-        
+        if (metadata.status != libcamera::FrameMetadata::FrameSuccess) {
+            cerr << "Frame error: " << metadata.status << endl;
+            return;
+        }
+            
         // Convert buffer data to OpenCV Mat
-        cv::Mat frame(mConfig->at(0).size.height, mConfig->at(0).size.width, 
-                      CV_8UC3, mMappedBuffers[buffer]);
-        
-        // Process image
-        processCameraFrame(frame, mNet);
-        
-        // Display image
-        cv::imshow("People Detection Test", frame);
-        cv::waitKey(1);
-        
-        // Requeue this request for reuse
-        request->reuse(Request::ReuseBuffers);
-        if (g_running) {
-            mCamera->queueRequest(request);
+        try {
+            cv::Mat frame(mConfig->at(0).size.height, mConfig->at(0).size.width, 
+                          CV_8UC3, mMappedBuffers[buffer]);
+            
+            if (frame.empty()) {
+                cerr << "Empty frame" << endl;
+                return;
+            }
+            
+            // Process image
+            processCameraFrame(frame, mNet);
+            
+            // Display image
+            cv::imshow("People Detection Test", frame);
+            cv::waitKey(1);
+            
+            // Requeue this request for reuse
+            request->reuse(Request::ReuseBuffers);
+            if (g_running) {
+                mCamera->queueRequest(request);
+            }
+        } catch (const std::exception& e) {
+            cerr << "Exception in requestComplete: " << e.what() << endl;
         }
     }
 
