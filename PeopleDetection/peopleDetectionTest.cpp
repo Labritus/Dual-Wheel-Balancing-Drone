@@ -166,19 +166,39 @@ private:
             
         // Convert buffer data to OpenCV Mat
         try {
-            cv::Mat frame(mConfig->at(0).size.height, mConfig->at(0).size.width, 
-                          CV_8UC3, mMappedBuffers[buffer]);
+            // Create source Mat from buffer
+            cv::Mat sourceFrame;
             
-            if (frame.empty()) {
+            // Handle different pixel formats
+            if (mConfig->at(0).pixelFormat == libcamera::formats::YUYV) {
+                // For YUYV format
+                cv::Mat yuyv(mConfig->at(0).size.height, mConfig->at(0).size.width, 
+                             CV_8UC2, mMappedBuffers[buffer]);
+                
+                // Convert YUYV to BGR
+                cv::cvtColor(yuyv, sourceFrame, cv::COLOR_YUV2BGR_YUYV);
+            } else if (mConfig->at(0).pixelFormat == libcamera::formats::MJPEG) {
+                // For MJPEG format
+                std::vector<uint8_t> jpegData(mMappedBuffers[buffer], 
+                                             mMappedBuffers[buffer] + buffer->metadata().planes[0].bytesused);
+                
+                sourceFrame = cv::imdecode(jpegData, cv::IMREAD_COLOR);
+            } else {
+                // Default RGB format
+                sourceFrame = cv::Mat(mConfig->at(0).size.height, mConfig->at(0).size.width, 
+                                     CV_8UC3, mMappedBuffers[buffer]);
+            }
+            
+            if (sourceFrame.empty()) {
                 cerr << "Empty frame" << endl;
                 return;
             }
             
             // Process image
-            processCameraFrame(frame, mNet);
+            processCameraFrame(sourceFrame, mNet);
             
             // Display image
-            cv::imshow("People Detection Test", frame);
+            cv::imshow("People Detection Test", sourceFrame);
             cv::waitKey(1);
             
             // Requeue this request for reuse
