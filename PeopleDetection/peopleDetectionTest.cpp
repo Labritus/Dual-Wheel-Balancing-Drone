@@ -138,89 +138,81 @@ private:
     
     // Process captured requests
     void requestComplete(libcamera::Request *request) {
-        if (!request || request->status() == libcamera::Request::RequestCancelled) {
+        if (request->status() == libcamera::Request::RequestCancelled)
             return;
-        }
             
-        auto buffers = request->buffers();
-        if (buffers.empty()) {
-            cerr << "No buffers in request" << endl;
-            return;
-        }
-            
-        libcamera::FrameBuffer *buffer = buffers.begin()->second;
-        if (!buffer) {
-            cerr << "Invalid buffer" << endl;
-            return;
-        }
-            
-        // Check if buffer is mapped
-        if (mMappedBuffers.find(buffer) == mMappedBuffers.end()) {
-            cerr << "Buffer not mapped" << endl;
-            return;
-        }
-            
-        // Get buffer metadata
-        const libcamera::FrameMetadata &metadata = buffer->metadata();
-        if (metadata.status != libcamera::FrameMetadata::FrameSuccess) {
-            cerr << "Frame error: " << metadata.status << endl;
-            return;
-        }
-            
-        // Convert buffer data to OpenCV Mat
         try {
-            // Create source Mat from buffer
-            cv::Mat sourceFrame;
+            libcamera::FrameBuffer *buffer = request->buffers().begin()->second;
+            const libcamera::FrameMetadata &metadata = buffer->metadata();
             
-            // Handle different pixel formats
-            if (mConfig->at(0).pixelFormat == libcamera::formats::YUYV) {
-                // For YUYV format
+            // 检查像素格式
+            libcamera::PixelFormat pixelFormat = mConfig->at(0).pixelFormat;
+            cv::Mat frame;
+            
+            if (pixelFormat == libcamera::formats::YUYV) {
+                // 创建YUYV格式的Mat
                 cv::Mat yuyv(mConfig->at(0).size.height, mConfig->at(0).size.width, 
-                             CV_8UC2, mMappedBuffers[buffer]);
+                           CV_8UC2, mMappedBuffers[buffer]);
                 
-                // Convert YUYV to BGR
-                cv::cvtColor(yuyv, sourceFrame, cv::COLOR_YUV2BGR_YUYV);
-            } else if (mConfig->at(0).pixelFormat == libcamera::formats::MJPEG) {
-                // For MJPEG format
+                // 转换YUYV到RGB
+                cv::cvtColor(yuyv, frame, cv::COLOR_YUV2BGR_YUYV);
+            } else if (pixelFormat == libcamera::formats::MJPEG) {
                 const auto& planes = metadata.planes();
                 if (planes.empty()) {
-                    cerr << "No planes in metadata" << endl;
-                    return;
+                    cerr << "No planes found in buffer metadata" << endl;
+                    goto requeue;
                 }
-                const FrameMetadata::Plane& metadataPlane = planes[0];
-                std::vector<uint8_t> jpegData(mMappedBuffers[buffer], 
-                                             mMappedBuffers[buffer] + metadataPlane.bytesused);
                 
-                sourceFrame = cv::imdecode(jpegData, cv::IMREAD_COLOR);
-                if (sourceFrame.empty()) {
+                const libcamera::FrameMetadata::Plane& metadataPlane = planes[0];
+                
+                // Decode MJPEG to Mat
+                cv::Mat mjpegData(1, metadataPlane.bytesused, CV_8UC1, mMappedBuffers[buffer]);
+                frame = cv::imdecode(mjpegData, cv::IMREAD_COLOR);
+                
+                if (frame.empty()) {
                     cerr << "Failed to decode MJPEG frame" << endl;
-                    return;
+                    goto requeue;
                 }
+            } else if (pixelFormat == libcamera::formats::RGB888) {
+                // 直接使用RGB数据
+                frame = cv::Mat(mConfig->at(0).size.height, mConfig->at(0).size.width, 
+                              CV_8UC3, mMappedBuffers[buffer]);
             } else {
-                // Default RGB format
-                sourceFrame = cv::Mat(mConfig->at(0).size.height, mConfig->at(0).size.width, 
-                                     CV_8UC3, mMappedBuffers[buffer]);
+                cerr << "Unsupported pixel format" << endl;
+                goto requeue;
             }
             
-            if (sourceFrame.empty()) {
-                cerr << "Empty frame" << endl;
-                return;
-            }
-            
-            // Process image
-            processCameraFrame(sourceFrame, mNet);
-            
-            // Display image
-            cv::imshow("People Detection Test", sourceFrame);
-            cv::waitKey(1);
-            
-            // Requeue this request for reuse
-            request->reuse(Request::ReuseBuffers);
-            if (g_running) {
-                mCamera->queueRequest(request);
+            // 安全处理图像
+            try {
+                // 在处理前检查图像是否有效
+                if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
+                    cerr << "Invalid frame: empty or has invalid dimensions" << endl;
+                } else {
+                    // 处理图像
+                    processCameraFrame(frame, mNet);
+                    
+                    // 显示图像
+                    cv::imshow("People Detection Test", frame);
+                    cv::waitKey(1);
+                }
+            } catch (const cv::Exception& e) {
+                cerr << "Exception in processCameraFrame: " << e.what() << endl;
+            } catch (const std::exception& e) {
+                cerr << "Exception in processCameraFrame: " << e.what() << endl;
+            } catch (...) {
+                cerr << "Unknown exception in processCameraFrame" << endl;
             }
         } catch (const std::exception& e) {
             cerr << "Exception in requestComplete: " << e.what() << endl;
+        } catch (...) {
+            cerr << "Unknown exception in requestComplete" << endl;
+        }
+        
+    requeue:
+        // 重用此请求
+        request->reuse(Request::ReuseBuffers);
+        if (g_running) {
+            mCamera->queueRequest(request);
         }
     }
 
@@ -296,20 +288,87 @@ public:
                 return false;
             }
             
-            // 加载模型
-            mNet = readNetFromCaffe(modelConfiguration, modelWeights);
-            if (mNet.empty()) {
-                cerr << "Failed to load model" << endl;
-                return false;
+            // 尝试使用不同的加载方法
+            cout << "Trying to load model with readNetFromCaffe..." << endl;
+            try {
+                mNet = readNetFromCaffe(modelConfiguration, modelWeights);
+                if (mNet.empty()) {
+                    cerr << "Failed to load model with readNetFromCaffe" << endl;
+                    throw std::runtime_error("Failed to load model");
+                }
+            } catch (const cv::Exception& e) {
+                cerr << "Exception in readNetFromCaffe: " << e.what() << endl;
+                cerr << "Trying alternative approach..." << endl;
+                
+                // 尝试备选方案：改变批归一化层参数
+                try {
+                    // 先导入配置文件
+                    mNet = readNetFromCaffe(modelConfiguration);
+                    if (mNet.empty()) {
+                        cerr << "Failed to load model configuration" << endl;
+                        throw std::runtime_error("Failed to load model configuration");
+                    }
+                    
+                    // 尝试关闭批归一化层的融合
+                    mNet.enableFusion(false);
+                    cout << "Disabled fusion for the network" << endl;
+                    
+                    // 然后加载权重文件
+                    mNet.setInput(Mat::zeros(1, 3, 300, 300, CV_32F));
+                    vector<Mat> dummy;
+                    mNet.forward(dummy, getOutputsNames(mNet));
+                    cout << "Pre-initialized network" << endl;
+                    
+                    // 重新加载带权重的模型
+                    mNet = readNetFromCaffe(modelConfiguration, modelWeights);
+                    cout << "Reloaded model with weights" << endl;
+                } catch (const cv::Exception& e) {
+                    cerr << "Exception in alternative loading: " << e.what() << endl;
+                    throw;
+                }
             }
             
             // 设置后端和目标
-            mNet.setPreferableBackend(DNN_BACKEND_OPENCV);
-            mNet.setPreferableTarget(DNN_TARGET_CPU);
+            cout << "Setting backend and target..." << endl;
+            try {
+                // 尝试使用不同的后端
+                cout << "Available backends:" << endl;
+                cout << "  DNN_BACKEND_OPENCV: " << DNN_BACKEND_OPENCV << endl;
+                cout << "  DNN_BACKEND_INFERENCE_ENGINE: " << DNN_BACKEND_INFERENCE_ENGINE << endl;
+                
+                // 选择最佳可用后端
+                mNet.setPreferableBackend(DNN_BACKEND_OPENCV);
+                mNet.setPreferableTarget(DNN_TARGET_CPU);
+                cout << "Set backend to OPENCV and target to CPU" << endl;
+            } catch (const cv::Exception& e) {
+                cerr << "Exception setting backend: " << e.what() << endl;
+                cerr << "Using default backend and target" << endl;
+            }
             
             // 检查网络层
-            vector<String> layerNames = mNet.getLayerNames();
-            cout << "Model loaded successfully with " << layerNames.size() << " layers" << endl;
+            try {
+                vector<String> layerNames = mNet.getLayerNames();
+                cout << "Model loaded successfully with " << layerNames.size() << " layers" << endl;
+                
+                // 预热网络
+                cout << "Warming up the network..." << endl;
+                Mat dummy(300, 300, CV_8UC3, Scalar(0, 0, 0));
+                Mat inputBlob;
+                blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
+                             Scalar(127.5, 127.5, 127.5), true, false);
+                mNet.setInput(inputBlob);
+                
+                vector<Mat> outs;
+                try {
+                    mNet.forward(outs, getOutputsNames(mNet));
+                    cout << "Network warmup successful" << endl;
+                } catch (const cv::Exception& e) {
+                    cerr << "Exception during warmup forward pass: " << e.what() << endl;
+                    cerr << "This may indicate a model compatibility issue" << endl;
+                }
+            } catch (const cv::Exception& e) {
+                cerr << "Exception checking network layers: " << e.what() << endl;
+            }
             
         } catch (const cv::Exception& e) {
             cerr << "OpenCV Exception loading model: " << e.what() << endl;
@@ -437,26 +496,91 @@ void signalHandler(int signum) {
 
 // Process camera frame
 void processCameraFrame(cv::Mat& frame, Net& net) {
-    // Create 4D blob from frame
-    cv::Mat blob;
-    cv::dnn::blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), cv::Scalar(127.5, 127.5, 127.5), true, false);
-    
-    // Set network input
-    net.setInput(blob);
-    
-    // Run forward pass to get output of the output layers
-    vector<cv::Mat> outs;
-    net.forward(outs, getOutputsNames(net));
-    
-    // Remove bounding boxes with low confidence
-    postprocess(frame, outs);
-    
-    // Display performance information
-    vector<double> layersTimes;
-    double freq = cv::getTickFrequency() / 1000;
-    double t = net.getPerfProfile(layersTimes) / freq;
-    string label = cv::format("Inference time: %.2f ms", t);
-    cv::putText(frame, label, cv::Point(0, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
+    try {
+        // 添加额外的检查
+        if (net.empty()) {
+            cerr << "Error: Neural network is empty" << endl;
+            return;
+        }
+        
+        if (frame.empty()) {
+            cerr << "Error: Frame is empty" << endl;
+            return;
+        }
+        
+        // 创建备份副本
+        cv::Mat frameCopy = frame.clone();
+        
+        // 创建4D blob
+        cv::Mat blob;
+        try {
+            blobFromImage(frameCopy, blob, 1/127.5, cv::Size(inpWidth, inpHeight), 
+                          cv::Scalar(127.5, 127.5, 127.5), true, false);
+            
+            if (blob.empty()) {
+                cerr << "Error: Failed to create blob from image" << endl;
+                return;
+            }
+        } catch (const cv::Exception& e) {
+            cerr << "Exception in blobFromImage: " << e.what() << endl;
+            return;
+        }
+        
+        // 设置网络输入
+        try {
+            net.setInput(blob);
+        } catch (const cv::Exception& e) {
+            cerr << "Exception in setInput: " << e.what() << endl;
+            return;
+        }
+        
+        // 运行前向传播
+        vector<cv::Mat> outs;
+        try {
+            // 获取输出层名称
+            vector<String> outNames = getOutputsNames(net);
+            if (outNames.empty()) {
+                cerr << "Error: Failed to get output layer names" << endl;
+                return;
+            }
+            
+            // 运行前向传播
+            net.forward(outs, outNames);
+            
+            if (outs.empty()) {
+                cerr << "Error: Network produced no outputs" << endl;
+                return;
+            }
+        } catch (const cv::Exception& e) {
+            cerr << "Exception in forward: " << e.what() << endl;
+            return;
+        }
+        
+        // 移除低置信度边界框
+        try {
+            postprocess(frame, outs);
+        } catch (const cv::Exception& e) {
+            cerr << "Exception in postprocess: " << e.what() << endl;
+            return;
+        }
+        
+        // 显示性能信息
+        try {
+            vector<double> layersTimes;
+            double freq = getTickFrequency() / 1000;
+            double t = net.getPerfProfile(layersTimes) / freq;
+            string label = format("Inference time: %.2f ms", t);
+            putText(frame, label, cv::Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255));
+        } catch (const cv::Exception& e) {
+            cerr << "Exception in performance display: " << e.what() << endl;
+        }
+    } catch (const cv::Exception& e) {
+        cerr << "Exception in processCameraFrame: " << e.what() << endl;
+    } catch (const std::exception& e) {
+        cerr << "Exception in processCameraFrame: " << e.what() << endl;
+    } catch (...) {
+        cerr << "Unknown exception in processCameraFrame" << endl;
+    }
 }
 
 // Remove low confidence bounding boxes using non-maximum suppression
