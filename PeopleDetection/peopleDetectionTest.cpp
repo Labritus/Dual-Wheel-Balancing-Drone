@@ -171,7 +171,7 @@ public:
 
     bool initialize() {
         // Load class names
-        string classesFile = "coco.names";
+        string classesFile = "Model/coco.names";
         ifstream ifs(classesFile.c_str());
         if (!ifs.is_open()) {
             cerr << "Could not open classes file: " << classesFile << endl;
@@ -182,8 +182,8 @@ public:
         while (getline(ifs, line)) classes.push_back(line);
         
         // Load model
-        String modelConfiguration = "deploy.prototxt";
-        String modelWeights = "mobilenet_iter_73000.caffemodel";
+        String modelConfiguration = "Model/deploy.prototxt";
+        String modelWeights = "Model/mobilenet_iter_73000.caffemodel";
         
         try {
             mNet = readNetFromCaffe(modelConfiguration, modelWeights);
