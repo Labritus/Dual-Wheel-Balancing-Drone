@@ -40,6 +40,13 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
 vector<String> getOutputsNames(const Net& net);
 void signalHandler(int signum);
 
+// Function to get the absolute path for model files
+string getModelPath(const string& filename) {
+    char buffer[1024];
+    string execPath = "/home/pu/Desktop/Dual-Wheel-Balancing-Drone/PeopleDetection/Model/";
+    return execPath + filename;
+}
+
 class PeopleDetector {
 private:
     std::unique_ptr<libcamera::CameraManager> mCameraManager;
@@ -171,7 +178,7 @@ public:
 
     bool initialize() {
         // Load class names
-        string classesFile = "Model/coco.names";
+        string classesFile = getModelPath("coco.names");
         ifstream ifs(classesFile.c_str());
         if (!ifs.is_open()) {
             cerr << "Could not open classes file: " << classesFile << endl;
@@ -182,8 +189,8 @@ public:
         while (getline(ifs, line)) classes.push_back(line);
         
         // Load model
-        String modelConfiguration = "Model/deploy.prototxt";
-        String modelWeights = "Model/mobilenet_iter_73000.caffemodel";
+        String modelConfiguration = getModelPath("deploy.prototxt");
+        String modelWeights = getModelPath("mobilenet_iter_73000.caffemodel");
         
         try {
             mNet = readNetFromCaffe(modelConfiguration, modelWeights);
