@@ -299,7 +299,7 @@ void signalHandler(int signum) {
 void processCameraFrame(cv::Mat& frame, Net& net) {
     // Create 4D blob from frame
     cv::Mat blob;
-    cv::blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), cv::Scalar(127.5, 127.5, 127.5), true, false);
+    cv::dnn::blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), cv::Scalar(127.5, 127.5, 127.5), true, false);
     
     // Set network input
     net.setInput(blob);
