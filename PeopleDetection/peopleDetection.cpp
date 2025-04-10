@@ -8,6 +8,7 @@
 #include <thread>
 #include <atomic>
 #include <signal.h>
+#include <sys/mman.h>
 
 // OpenCV related
 #include <opencv2/opencv.hpp>
