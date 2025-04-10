@@ -89,16 +89,23 @@ private:
         StreamConfiguration &streamConfig = mConfig->at(0);
         cout << "Default viewfinder configuration: " << streamConfig.toString() << endl;
         
-        // Set resolution and format
+        // Set resolution and format for USB camera
         streamConfig.size.width = 640;
         streamConfig.size.height = 480;
-        streamConfig.pixelFormat = libcamera::formats::RGB888;
+        streamConfig.pixelFormat = libcamera::formats::YUYV;
         streamConfig.bufferCount = 4;
         
+        // Try to validate the configuration
         ret = mConfig->validate();
         if (ret) {
             cerr << "Failed to validate camera configuration: " << ret << endl;
-            return false;
+            // Try alternative configuration
+            streamConfig.pixelFormat = libcamera::formats::MJPEG;
+            ret = mConfig->validate();
+            if (ret) {
+                cerr << "Failed to validate camera configuration with MJPEG format" << endl;
+                return false;
+            }
         }
         
         ret = mCamera->configure(mConfig.get());
