@@ -98,14 +98,17 @@ private:
         // Try to validate the configuration
         ret = mConfig->validate();
         if (ret) {
-            cerr << "Failed to validate camera configuration: " << ret << endl;
+            cerr << "Failed to validate camera configuration with YUYV format: " << ret << endl;
             // Try alternative configuration
             streamConfig.pixelFormat = libcamera::formats::MJPEG;
             ret = mConfig->validate();
             if (ret) {
-                cerr << "Failed to validate camera configuration with MJPEG format" << endl;
+                cerr << "Failed to validate camera configuration with MJPEG format: " << ret << endl;
                 return false;
             }
+            cout << "Using MJPEG format" << endl;
+        } else {
+            cout << "Using YUYV format" << endl;
         }
         
         ret = mCamera->configure(mConfig.get());
@@ -179,11 +182,20 @@ private:
                 cv::cvtColor(yuyv, sourceFrame, cv::COLOR_YUV2BGR_YUYV);
             } else if (mConfig->at(0).pixelFormat == libcamera::formats::MJPEG) {
                 // For MJPEG format
-                const FrameMetadata::Plane &metadataPlane = metadata.planes().at(0);
+                const auto& planes = metadata.planes();
+                if (planes.empty()) {
+                    cerr << "No planes in metadata" << endl;
+                    return;
+                }
+                const FrameMetadata::Plane& metadataPlane = planes[0];
                 std::vector<uint8_t> jpegData(mMappedBuffers[buffer], 
                                              mMappedBuffers[buffer] + metadataPlane.bytesused);
                 
                 sourceFrame = cv::imdecode(jpegData, cv::IMREAD_COLOR);
+                if (sourceFrame.empty()) {
+                    cerr << "Failed to decode MJPEG frame" << endl;
+                    return;
+                }
             } else {
                 // Default RGB format
                 sourceFrame = cv::Mat(mConfig->at(0).size.height, mConfig->at(0).size.width, 
@@ -269,16 +281,29 @@ public:
         // Map buffers
         for (StreamConfiguration &cfg : *mConfig) {
             Stream *stream = cfg.stream();
+            if (!stream) {
+                cerr << "Invalid stream" << endl;
+                return false;
+            }
+            
             const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
+            if (buffers.empty()) {
+                cerr << "No buffers allocated for stream" << endl;
+                return false;
+            }
             
             for (unsigned int i = 0; i < buffers.size(); ++i) {
                 const std::unique_ptr<FrameBuffer> &buffer = buffers[i];
+                if (!buffer) {
+                    cerr << "Invalid buffer" << endl;
+                    return false;
+                }
                 
                 // Map buffer memory
                 const FrameBuffer::Plane &plane = buffer->planes()[0];
                 void *memory = mmap(NULL, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
                 if (memory == MAP_FAILED) {
-                    cerr << "Failed to mmap buffer" << endl;
+                    cerr << "Failed to mmap buffer: " << strerror(errno) << endl;
                     return false;
                 }
                 
@@ -293,7 +318,7 @@ public:
                 
                 int ret = request->addBuffer(stream, buffer.get());
                 if (ret < 0) {
-                    cerr << "Failed to add buffer to request" << endl;
+                    cerr << "Failed to add buffer to request: " << ret << endl;
                     return false;
                 }
                 
