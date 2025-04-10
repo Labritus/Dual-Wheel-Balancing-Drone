@@ -259,16 +259,64 @@ public:
         
         string line;
         while (getline(ifs, line)) classes.push_back(line);
+        cout << "Loaded " << classes.size() << " class names" << endl;
         
         // Load model
         String modelConfiguration = getModelPath("deploy.prototxt");
         String modelWeights = getModelPath("mobilenet_iter_73000.caffemodel");
         
+        cout << "Loading model configuration from: " << modelConfiguration << endl;
+        cout << "Loading model weights from: " << modelWeights << endl;
+        
         try {
+            // 检查文件是否存在
+            ifstream configFile(modelConfiguration);
+            ifstream weightsFile(modelWeights);
+            
+            if (!configFile.is_open()) {
+                cerr << "Could not open model configuration file" << endl;
+                return false;
+            }
+            if (!weightsFile.is_open()) {
+                cerr << "Could not open model weights file" << endl;
+                return false;
+            }
+            
+            // 获取文件大小
+            configFile.seekg(0, ios::end);
+            size_t configSize = configFile.tellg();
+            weightsFile.seekg(0, ios::end);
+            size_t weightsSize = weightsFile.tellg();
+            
+            cout << "Model configuration file size: " << configSize << " bytes" << endl;
+            cout << "Model weights file size: " << weightsSize << " bytes" << endl;
+            
+            if (configSize == 0 || weightsSize == 0) {
+                cerr << "Model files are empty" << endl;
+                return false;
+            }
+            
+            // 加载模型
             mNet = readNetFromCaffe(modelConfiguration, modelWeights);
+            if (mNet.empty()) {
+                cerr << "Failed to load model" << endl;
+                return false;
+            }
+            
+            // 设置后端和目标
             mNet.setPreferableBackend(DNN_BACKEND_OPENCV);
             mNet.setPreferableTarget(DNN_TARGET_CPU);
+            
+            // 检查网络层
+            vector<String> layerNames = mNet.getLayerNames();
+            cout << "Model loaded successfully with " << layerNames.size() << " layers" << endl;
+            
         } catch (const cv::Exception& e) {
+            cerr << "OpenCV Exception loading model: " << e.what() << endl;
+            cerr << "Error code: " << e.code << endl;
+            cerr << "Error message: " << e.err << endl;
+            return false;
+        } catch (const std::exception& e) {
             cerr << "Exception loading model: " << e.what() << endl;
             return false;
         }
