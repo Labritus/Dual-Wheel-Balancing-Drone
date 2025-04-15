@@ -296,6 +296,10 @@ public:
                     cerr << "Failed to load model with readNetFromCaffe" << endl;
                     throw std::runtime_error("Failed to load model");
                 }
+                
+                // Disable fusion for batch normalization layers
+                mNet.enableFusion(false);
+                cout << "Disabled fusion for batch normalization layers" << endl;
             } catch (const cv::Exception& e) {
                 cerr << "Exception in readNetFromCaffe: " << e.what() << endl;
                 cerr << "Trying alternative approach..." << endl;
@@ -309,12 +313,11 @@ public:
                         throw std::runtime_error("Failed to load model configuration");
                     }
                     
-                    // 尝试关闭批归一化层的融合
+                    // 禁用融合
                     mNet.enableFusion(false);
                     cout << "Disabled fusion for the network" << endl;
                     
-                    // 然后加载权重文件
-                    // 创建一个正确的4D张量作为输入 [batch_size, channels, height, width]
+                    // 预初始化网络
                     vector<int> inputDims = {1, 3, 300, 300};
                     Mat dummyInput = Mat::zeros(inputDims, CV_32F);
                     mNet.setInput(dummyInput);
@@ -341,7 +344,7 @@ public:
                 Mat dummy(300, 300, CV_8UC3, Scalar(0, 0, 0));
                 Mat inputBlob;
                 blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
-                             Scalar(127.5, 127.5, 127.5), true, false);
+                         Scalar(127.5, 127.5, 127.5), true, false);
                 mNet.setInput(inputBlob);
                 
                 vector<Mat> outs;
