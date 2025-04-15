@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <cstring>
 
-// 最大可初始化引脚数
+// Maximum number of pins that can be initialized
 #define MAX_PINS 64
 
 GPIOInterface::GPIOInterface() {
@@ -24,24 +24,24 @@ GPIOInterface::~GPIOInterface() {
 }
 
 bool GPIOInterface::initialize(int pin, PinMode mode) {
-    // 检查引脚是否已经初始化
+    // Check if the pin is already initialized
     for (int i = 0; i < num_pins_; i++) {
         if (initialized_pins_[i] == pin) {
-            return true; // 已经初始化
+            return true; // Already initialized
         }
     }
     
-    // 导出引脚
+    // Export the pin
     if (!exportPin(pin)) {
         return false;
     }
     
-    // 设置引脚方向
+    // Set the pin direction
     if (!setDirection(pin, mode)) {
         return false;
     }
     
-    // 添加到初始化列表
+    // Add to the list of initialized pins
     if (num_pins_ < MAX_PINS) {
         initialized_pins_[num_pins_++] = pin;
         return true;
@@ -53,14 +53,14 @@ bool GPIOInterface::initialize(int pin, PinMode mode) {
 void GPIOInterface::release(int pin) {
     std::ofstream unexport_file("/sys/class/gpio/unexport");
     if (!unexport_file.is_open()) {
-        std::cerr << "无法打开unexport文件" << std::endl;
+        std::cerr << "Failed to open unexport file" << std::endl;
         return;
     }
     
     unexport_file << pin;
     unexport_file.close();
     
-    // 从已初始化列表中移除
+    // Remove from the list of initialized pins
     for (int i = 0; i < num_pins_; i++) {
         if (initialized_pins_[i] == pin) {
             for (int j = i; j < num_pins_ - 1; j++) {
@@ -79,7 +79,7 @@ bool GPIOInterface::digitalWrite(int pin, PinState state) {
     
     std::ofstream value_file(ss.str());
     if (!value_file.is_open()) {
-        std::cerr << "无法打开GPIO值文件：" << ss.str() << std::endl;
+        std::cerr << "Failed to open GPIO value file: " << ss.str() << std::endl;
         return false;
     }
     
@@ -95,8 +95,8 @@ PinState GPIOInterface::digitalRead(int pin) {
     
     std::ifstream value_file(ss.str());
     if (!value_file.is_open()) {
-        std::cerr << "无法打开GPIO值文件：" << ss.str() << std::endl;
-        return PinState::LOW; // 默认返回低电平
+        std::cerr << "Failed to open GPIO value file: " << ss.str() << std::endl;
+        return PinState::LOW; // Default to returning LOW
     }
     
     char value;
@@ -107,13 +107,13 @@ PinState GPIOInterface::digitalRead(int pin) {
 }
 
 bool GPIOInterface::setPWM(int pin, int value) {
-    // 这里应该根据硬件特性实现PWM控制
-    // 对于简单的示例，我们可以使用软件模拟PWM
-    // 但实际上应该使用硬件PWM功能
+    // PWM control should be implemented according to hardware specifications
+    // For a simple example, we can use software emulation of PWM
+    // But in practice, hardware PWM should be used
     
-    std::cout << "PWM功能尚未实现，设置引脚 " << pin << " 值为 " << value << std::endl;
+    std::cout << "PWM feature not yet implemented, setting pin " << pin << " to value " << value << std::endl;
     
-    // 对于非硬件PWM实现，可以考虑使用软件PWM或者简单地设置数字输出
+    // For non-hardware PWM implementation, consider using software PWM or simply setting the digital output
     if (value > 127) {
         return digitalWrite(pin, PinState::HIGH);
     } else {
@@ -133,15 +133,15 @@ void GPIOInterface::cleanup() {
 bool GPIOInterface::exportPin(int pin) {
     std::ofstream export_file("/sys/class/gpio/export");
     if (!export_file.is_open()) {
-        std::cerr << "无法打开export文件" << std::endl;
+        std::cerr << "Failed to open export file" << std::endl;
         return false;
     }
     
     export_file << pin;
     export_file.close();
     
-    // 等待GPIO文件系统创建完成
-    usleep(100000); // 等待100ms
+    // Wait for the GPIO filesystem to be ready
+    usleep(100000); // Wait 100ms
     
     return true;
 }
@@ -152,7 +152,7 @@ bool GPIOInterface::setDirection(int pin, PinMode mode) {
     
     std::ofstream direction_file(ss.str());
     if (!direction_file.is_open()) {
-        std::cerr << "无法打开GPIO方向文件：" << ss.str() << std::endl;
+        std::cerr << "Failed to open GPIO direction file: " << ss.str() << std::endl;
         return false;
     }
     
@@ -164,4 +164,4 @@ bool GPIOInterface::setDirection(int pin, PinMode mode) {
     
     direction_file.close();
     return true;
-} 
+}
