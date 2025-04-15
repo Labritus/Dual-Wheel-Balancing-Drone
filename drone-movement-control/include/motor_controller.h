@@ -9,26 +9,26 @@ public:
     MotorController();
     ~MotorController();
     
-    // 初始化电机控制器
+    // Initialize the motor controller
     bool initialize();
     
-    // 设置电机PWM值
+    // Set the motor PWM values
     bool setPWM(int motor_left, int motor_right);
     
-    // 停止电机
+    // Stop the motors
     void stop();
     
-    // 检查控制器状态
+    // Check the controller status
     bool isInitialized() const;
     
 private:
     GPIOInterface gpio_;
     
-    // 限制PWM值在允许范围内
+    // Limit the PWM value within the allowed range
     int limitPWM(int pwm, int max_value, int min_value);
     
-    // 电机引脚状态标志
+    // Motor pin status flag
     bool initialized_;
 };
 
-#endif // MOTOR_CONTROLLER_H 
+#endif // MOTOR_CONTROLLER_H
