@@ -20,34 +20,34 @@ public:
     GPIOInterface();
     ~GPIOInterface();
     
-    // 初始化GPIO引脚
+    // Initialize the GPIO pin
     bool initialize(int pin, PinMode mode);
     
-    // 释放GPIO引脚
+    // Release the GPIO pin
     void release(int pin);
     
-    // 设置数字输出值
+    // Set the digital output value
     bool digitalWrite(int pin, PinState state);
     
-    // 读取数字输入值
+    // Read the digital input value
     PinState digitalRead(int pin);
     
-    // 设置PWM值 (0-255)
+    // Set the PWM value (0-255)
     bool setPWM(int pin, int value);
     
-    // 关闭并释放所有资源
+    // Close and release all resources
     void cleanup();
     
 private:
-    // 将引脚导出到sysfs
+    // Export the pin to sysfs
     bool exportPin(int pin);
     
-    // 设置引脚方向
+    // Set the pin direction
     bool setDirection(int pin, PinMode mode);
     
-    // 已初始化的引脚
+    // Initialized pins
     int* initialized_pins_;
     int num_pins_;
 };
 
-#endif // GPIO_INTERFACE_H 
+#endif // GPIO_INTERFACE_H
