@@ -293,7 +293,7 @@ public:
             Mat dummy(300, 300, CV_8UC3, Scalar(0, 0, 0));
             Mat inputBlob;
             blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
-                 Scalar(127.5, 127.5, 127.5), true, false);
+             Scalar(127.5, 127.5, 127.5), true, false);
             mNet.setInput(inputBlob);
 
             vector<Mat> dummyOutput;
