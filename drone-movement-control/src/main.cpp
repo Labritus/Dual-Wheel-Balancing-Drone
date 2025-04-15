@@ -9,20 +9,20 @@
 #include "../include/drone_controller.h"
 #include "../include/drone_status_interface.h"
 
-// 全局变量
+// Global variables
 bool running = true;
 std::ofstream log_file;
 std::mutex log_mutex;
 DroneController drone_controller;
 DroneStatusInterface& status_interface = DroneStatusInterface::getInstance();
 
-// 处理Ctrl+C信号
+// Signal handler for Ctrl+C
 void signalHandler(int signum) {
-    std::cout << "中断信号 (" << signum << ") 已接收，正在关闭程序..." << std::endl;
+    std::cout << "Interrupt signal (" << signum << ") received, shutting down the program..." << std::endl;
     running = false;
 }
 
-// 记录消息到控制台和文件
+// Log messages to both the console and file
 void logMessage(const std::string& message) {
     auto now = std::chrono::system_clock::now();
     auto now_time_t = std::chrono::system_clock::to_time_t(now);
@@ -34,7 +34,7 @@ void logMessage(const std::string& message) {
     
     std::string log_entry = "[" + timestamp.str() + "] " + message;
     
-    // 线程安全的日志记录
+    // Thread-safe logging
     std::lock_guard<std::mutex> lock(log_mutex);
     std::cout << log_entry << std::endl;
     
@@ -43,33 +43,33 @@ void logMessage(const std::string& message) {
     }
 }
 
-// 姿态更新回调
+// Attitude update callback
 void onAttitudeUpdate(float roll, float pitch, float yaw) {
     static int counter = 0;
     static float last_roll = 0;
     static float last_pitch = 0;
     
-    // 只有在姿态变化超过阈值或每50次更新时才记录
+    // Log only when attitude change exceeds threshold or every 50 updates
     if (counter++ % 50 == 0 || 
         std::abs(roll - last_roll) > 5.0f || 
         std::abs(pitch - last_pitch) > 5.0f) {
         
         std::stringstream ss;
-        ss << "姿态更新: Roll=" << std::fixed << std::setprecision(2) << roll
+        ss << "Attitude update: Roll=" << std::fixed << std::setprecision(2) << roll
            << "°, Pitch=" << pitch << "°, Yaw=" << yaw << "°";
         logMessage(ss.str());
         
-        // 如果姿态角度超过警告阈值，记录警告
+        // If the attitude angles exceed warning thresholds, log a warning event
         if (std::abs(roll) > 30.0f || std::abs(pitch) > 30.0f) {
-            status_interface.addEvent("姿态警告", "姿态角度超过安全范围");
-            logMessage("警告: 姿态角度超过安全范围!");
+            status_interface.addEvent("Attitude Warning", "Attitude angles exceed safe range");
+            logMessage("Warning: Attitude angles exceed safe range!");
         }
         
         last_roll = roll;
         last_pitch = pitch;
     }
     
-    // 更新状态接口中的姿态数据
+    // Update the attitude data in the status interface
     DroneStatus current_status = status_interface.getStatus();
     current_status.roll = roll;
     current_status.pitch = pitch;
@@ -77,173 +77,173 @@ void onAttitudeUpdate(float roll, float pitch, float yaw) {
     status_interface.updateStatus(current_status);
 }
 
-// 电池更新回调
+// Battery update callback
 void onBatteryUpdate(int voltage_mv) {
     static int last_voltage = 0;
     
-    // 只有在电压变化超过阈值时才记录
+    // Log only when the voltage change exceeds a threshold
     if (std::abs(voltage_mv - last_voltage) > 100) {
         std::stringstream ss;
-        ss << "电池电压: " << voltage_mv << "mV";
+        ss << "Battery voltage: " << voltage_mv << " mV";
         logMessage(ss.str());
         
         if (voltage_mv < 11000) {
-            status_interface.addEvent("电池警告", "电池电压低于11V");
-            logMessage("警告: 电池电压低!");
+            status_interface.addEvent("Battery Warning", "Battery voltage is below 11V");
+            logMessage("Warning: Battery voltage low!");
         }
         
         last_voltage = voltage_mv;
     }
     
-    // 更新状态接口中的电池数据
+    // Update the battery data in the status interface
     DroneStatus current_status = status_interface.getStatus();
     current_status.battery_voltage = voltage_mv;
     status_interface.updateStatus(current_status);
 }
 
-// 电机输出回调
+// Motor output callback
 void onMotorOutput(int left_pwm, int right_pwm) {
     static int last_left_pwm = 0;
     static int last_right_pwm = 0;
     
-    // 只有在PWM值变化超过阈值时才记录
+    // Log only when PWM values change significantly
     if (std::abs(left_pwm - last_left_pwm) > 500 || std::abs(right_pwm - last_right_pwm) > 500) {
         std::stringstream ss;
-        ss << "电机输出: 左PWM=" << left_pwm << ", 右PWM=" << right_pwm;
+        ss << "Motor output: Left PWM=" << left_pwm << ", Right PWM=" << right_pwm;
         logMessage(ss.str());
         
         last_left_pwm = left_pwm;
         last_right_pwm = right_pwm;
     }
     
-    // 更新状态接口中的电机数据
+    // Update the motor output data in the status interface
     DroneStatus current_status = status_interface.getStatus();
     current_status.motor_left_pwm = left_pwm;
     current_status.motor_right_pwm = right_pwm;
     status_interface.updateStatus(current_status);
 }
 
-// 错误回调
+// Error callback
 void onError(const std::string& error_message, int error_code) {
     std::stringstream ss;
-    ss << "错误 [" << error_code << "]: " << error_message;
+    ss << "Error [" << error_code << "]: " << error_message;
     logMessage(ss.str());
     
-    // 记录错误事件
-    status_interface.addEvent("系统错误", ss.str());
+    // Log the error event
+    status_interface.addEvent("System Error", ss.str());
 }
 
-// 状态变化回调
+// State change callback
 void onStateChange(const std::string& state_name, bool state_active) {
     std::stringstream ss;
-    ss << "状态变化: " << state_name << " 现在" << (state_active ? "激活" : "停用");
+    ss << "State change: " << state_name << " is now " << (state_active ? "active" : "inactive");
     logMessage(ss.str());
     
-    // 记录状态变化事件
-    status_interface.addEvent("状态变化", ss.str());
+    // Log the state change event
+    status_interface.addEvent("State Change", ss.str());
     
-    // 更新状态接口中的状态描述
+    // Update the state description in the status interface
     DroneStatus current_status = status_interface.getStatus();
-    current_status.status_description = state_name + (state_active ? " 激活" : " 停用");
+    current_status.status_description = state_name + (state_active ? " Active" : " Inactive");
     status_interface.updateStatus(current_status);
 }
 
-// 状态导出回调函数 - 用于显示状态摘要
+// Status export callback function - used to display a status summary
 void onStatusExport(const DroneStatus& status) {
     static int counter = 0;
     
-    // 每50次更新打印一次状态摘要
+    // Print a status summary every 50 updates
     if (counter++ % 50 == 0) {
         std::stringstream ss;
-        ss << "状态摘要: "
+        ss << "Status summary: "
            << "Roll=" << std::fixed << std::setprecision(2) << status.roll
            << "°, Pitch=" << status.pitch
-           << "°, 电池=" << status.battery_voltage
-           << "mV, 位置=" << status.position
-           << ", 电机=" << status.motor_left_pwm << "/" << status.motor_right_pwm;
+           << "°, Battery=" << status.battery_voltage
+           << " mV, Position=" << status.position
+           << ", Motor=" << status.motor_left_pwm << "/" << status.motor_right_pwm;
         logMessage(ss.str());
     }
 }
 
 int main() {
-    // 注册信号处理函数
+    // Register the signal handler for SIGINT
     signal(SIGINT, signalHandler);
     
-    // 打开日志文件
+    // Open the log file
     log_file.open("drone_log.txt", std::ios::out | std::ios::app);
     if (!log_file.is_open()) {
-        std::cerr << "无法打开日志文件" << std::endl;
+        std::cerr << "Unable to open log file" << std::endl;
         return 1;
     }
     
-    logMessage("无人机控制系统启动");
+    logMessage("Drone control system started");
     
-    // 注册回调函数
+    // Register callback functions
     drone_controller.registerAttitudeCallback(onAttitudeUpdate);
     drone_controller.registerBatteryCallback(onBatteryUpdate);
     drone_controller.registerMotorOutputCallback(onMotorOutput);
     drone_controller.registerErrorCallback(onError);
     drone_controller.registerStateChangeCallback(onStateChange);
     
-    // 注册状态导出回调
+    // Register status export callback
     status_interface.registerExportCallback(onStatusExport);
     
-    // 启动CSV和JSON记录
+    // Start CSV and JSON logging
     status_interface.startCSVRecording("drone_status.csv");
     status_interface.startJSONRecording("drone_events.json");
     
-    // 初始化硬件
+    // Initialize hardware
     if (!drone_controller.initializeHardware()) {
-        logMessage("硬件初始化失败，程序退出");
+        logMessage("Hardware initialization failed, exiting program");
         log_file.close();
         return 1;
     }
     
-    logMessage("系统初始化完成，开始控制循环");
+    logMessage("System initialization complete, starting control loop");
     
-    // 设置目标位置
+    // Set the target position
     drone_controller.setTargetPosition(1000);
     
-    // 主控制循环
+    // Main control loop
     int counter = 0;
     while (running) {
-        // 更新控制器
+        // Update the controller
         drone_controller.update();
         
-        // 每100个循环显示一次状态
+        // Display status every 100 cycles
         if (counter++ % 100 == 0) {
-            // 更新DroneStatus数据
+            // Update DroneStatus data
             DroneStatus current_status = status_interface.getStatus();
             current_status.position = drone_controller.getCurrentPosition();
             current_status.velocity = drone_controller.getCurrentVelocity();
             current_status.position_mode = drone_controller.isPositionMode();
             status_interface.updateStatus(current_status);
             
-            // 显示状态
+            // Display the current stats
             drone_controller.displayStats();
         }
         
-        // 添加一些随机事件以演示事件记录
+        // Add some loop events to demonstrate event logging
         if (counter % 1000 == 0) {
-            status_interface.addEvent("循环事件", "完成了1000次控制循环");
-            logMessage("已完成1000次控制循环");
+            status_interface.addEvent("Loop Event", "Completed 1000 control loops");
+            logMessage("Completed 1000 control loops");
         }
         
-        // 短暂休眠，减少CPU使用率
+        // Brief sleep to reduce CPU usage
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
-    // 停止电机
+    // Stop the motors
     drone_controller.stopMotors();
     
-    // 停止记录
+    // Stop logging recordings
     status_interface.stopCSVRecording();
     status_interface.stopJSONRecording();
     
-    logMessage("系统正常关闭");
+    logMessage("System shutdown normally");
     
-    // 关闭日志文件
+    // Close the log file
     log_file.close();
     
     return 0;
-} 
+}
