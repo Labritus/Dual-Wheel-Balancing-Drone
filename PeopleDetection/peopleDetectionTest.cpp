@@ -26,12 +26,12 @@ using namespace std::chrono_literals;
 // Global variables
 atomic<bool> g_running{true};
 
-// Neural network parameters
-float confThreshold = 0.5; // Confidence threshold
-float nmsThreshold = 0.4;  // Non-maximum suppression threshold
-int inpWidth = 300;        // Width of network's input image
-int inpHeight = 300;       // Height of network's input image
-vector<string> classes;    // Class list
+// Neural network parameters - REDUCED DIMENSIONS
+float confThreshold = 0.5;  // Confidence threshold
+float nmsThreshold = 0.4;   // Non-maximum suppression threshold
+int inpWidth = 224;         // Width of network's input image (reduced from 300)
+int inpHeight = 224;        // Height of network's input image (reduced from 300)
+vector<string> classes;     // Class list
 
 // Function declarations
 void processCameraFrame(cv::Mat& frame, Net& net);
@@ -89,11 +89,11 @@ private:
         StreamConfiguration &streamConfig = mConfig->at(0);
         cout << "Default viewfinder configuration: " << streamConfig.toString() << endl;
         
-        // Set resolution and format for USB camera
-        streamConfig.size.width = 640;
-        streamConfig.size.height = 480;
+        // REDUCED RESOLUTION for lower memory usage
+        streamConfig.size.width = 320;   // Reduced from 640
+        streamConfig.size.height = 240;  // Reduced from 480
         streamConfig.pixelFormat = libcamera::formats::YUYV;
-        streamConfig.bufferCount = 4;
+        streamConfig.bufferCount = 2;    // Reduced from 4
         
         // Try to validate the configuration
         ret = mConfig->validate();
@@ -145,16 +145,16 @@ private:
             libcamera::FrameBuffer *buffer = request->buffers().begin()->second;
             const libcamera::FrameMetadata &metadata = buffer->metadata();
             
-            // 检查像素格式
+            // Check pixel format
             libcamera::PixelFormat pixelFormat = mConfig->at(0).pixelFormat;
             cv::Mat frame;
             
             if (pixelFormat == libcamera::formats::YUYV) {
-                // 创建YUYV格式的Mat
+                // Create YUYV format Mat
                 cv::Mat yuyv(mConfig->at(0).size.height, mConfig->at(0).size.width, 
                            CV_8UC2, mMappedBuffers[buffer]);
                 
-                // 转换YUYV到RGB
+                // Convert YUYV to RGB
                 cv::cvtColor(yuyv, frame, cv::COLOR_YUV2BGR_YUYV);
             } else if (pixelFormat == libcamera::formats::MJPEG) {
                 const auto& planes = metadata.planes();
@@ -174,7 +174,7 @@ private:
                     goto requeue;
                 }
             } else if (pixelFormat == libcamera::formats::RGB888) {
-                // 直接使用RGB数据
+                // Direct use of RGB data
                 frame = cv::Mat(mConfig->at(0).size.height, mConfig->at(0).size.width, 
                               CV_8UC3, mMappedBuffers[buffer]);
             } else {
@@ -182,18 +182,23 @@ private:
                 goto requeue;
             }
             
-            // 安全处理图像
+            // Safely process image
             try {
-                // 在处理前检查图像是否有效
+                // Check if image is valid before processing
                 if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
                     cerr << "Invalid frame: empty or has invalid dimensions" << endl;
                 } else {
-                    // 处理图像
-                    processCameraFrame(frame, mNet);
+                    // Process image (with reduced resolution for better performance)
+                    cv::Mat resizedFrame;
+                    cv::resize(frame, resizedFrame, cv::Size(320, 240));
+                    processCameraFrame(resizedFrame, mNet);
                     
-                    // 显示图像
-                    cv::imshow("People Detection Test", frame);
+                    // Display image
+                    cv::imshow("People Detection Test", resizedFrame);
                     cv::waitKey(1);
+                    
+                    // Explicitly release memory
+                    resizedFrame.release();
                 }
             } catch (const cv::Exception& e) {
                 cerr << "Exception in processCameraFrame: " << e.what() << endl;
@@ -202,6 +207,10 @@ private:
             } catch (...) {
                 cerr << "Unknown exception in processCameraFrame" << endl;
             }
+            
+            // Explicitly release frame memory
+            frame.release();
+            
         } catch (const std::exception& e) {
             cerr << "Exception in requestComplete: " << e.what() << endl;
         } catch (...) {
@@ -209,7 +218,7 @@ private:
         }
         
     requeue:
-        // 重用此请求
+        // Reuse this request
         request->reuse(Request::ReuseBuffers);
         if (g_running) {
             mCamera->queueRequest(request);
@@ -261,7 +270,7 @@ public:
         cout << "Loading model weights from: " << modelWeights << endl;
         
         try {
-            // Check file existence
+            // Check if files exist
             ifstream configFile(modelConfiguration);
             ifstream weightsFile(modelWeights);
             
@@ -274,7 +283,7 @@ public:
                 return false;
             }
             
-            // Get file size
+            // Get file sizes
             configFile.seekg(0, ios::end);
             size_t configSize = configFile.tellg();
             weightsFile.seekg(0, ios::end);
@@ -288,78 +297,78 @@ public:
                 return false;
             }
             
-            // Pre-initialize network
-            cout << "Warming up the network..." << endl;
-            Mat dummy(300, 300, CV_8UC3, Scalar(0, 0, 0));
-            Mat inputBlob;
-            blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
-             Scalar(127.5, 127.5, 127.5), true, false);
-            mNet.setInput(inputBlob);
-
-            vector<Mat> dummyOutput;
-            mNet.forward(dummyOutput, getOutputsNames(mNet));
-            cout << "Network warmup successful" << endl;
-
-            // Setup camera
-            if (!setupCamera()) {
+            // FIXED: Properly load and configure the network
+            mNet = cv::dnn::readNetFromCaffe(modelConfiguration, modelWeights);
+            if (mNet.empty()) {
+                cerr << "Failed to load network" << endl;
                 return false;
             }
-
-            // Map buffers
-            for (StreamConfiguration &cfg : *mConfig) {
-                Stream *stream = cfg.stream();
-                if (!stream) {
-                    cerr << "Invalid stream" << endl;
-                    return false;
-                }
-                
-                const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
-                if (buffers.empty()) {
-                    cerr << "No buffers allocated for stream" << endl;
-                    return false;
-                }
-                
-                for (unsigned int i = 0; i < buffers.size(); ++i) {
-                    const std::unique_ptr<FrameBuffer> &buffer = buffers[i];
-                    if (!buffer) {
-                        cerr << "Invalid buffer" << endl;
-                        return false;
-                    }
-                    
-                    // Map buffer memory
-                    const FrameBuffer::Plane &plane = buffer->planes()[0];
-                    void *memory = mmap(NULL, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
-                    if (memory == MAP_FAILED) {
-                        cerr << "Failed to mmap buffer: " << strerror(errno) << endl;
-                        return false;
-                    }
-                    
-                    mMappedBuffers[buffer.get()] = static_cast<uint8_t*>(memory);
-                    
-                    // Create request
-                    std::unique_ptr<Request> request = mCamera->createRequest();
-                    if (!request) {
-                        cerr << "Failed to create request" << endl;
-                        return false;
-                    }
-                    
-                    int ret = request->addBuffer(stream, buffer.get());
-                    if (ret < 0) {
-                        cerr << "Failed to add buffer to request: " << ret << endl;
-                        return false;
-                    }
-                    
-                    mRequests.push_back(std::move(request));
-                }
-            }
-
-            cout << "Initialization complete" << endl;
-            return true;
+            
+            // Set backend and target for optimized performance
+            mNet.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+            mNet.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+            
+            cout << "Network loaded successfully" << endl;
         } catch (const cv::Exception& e) {
-            cerr << "Exception during warmup forward pass: " << e.what() << endl;
-            cerr << "This may indicate a model compatibility issue" << endl;
+            cerr << "Exception loading network: " << e.what() << endl;
             return false;
         }
+        
+        // Setup camera
+        if (!setupCamera()) {
+            return false;
+        }
+        
+        // Map buffers
+        for (StreamConfiguration &cfg : *mConfig) {
+            Stream *stream = cfg.stream();
+            if (!stream) {
+                cerr << "Invalid stream" << endl;
+                return false;
+            }
+            
+            const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
+            if (buffers.empty()) {
+                cerr << "No buffers allocated for stream" << endl;
+                return false;
+            }
+            
+            for (unsigned int i = 0; i < buffers.size(); ++i) {
+                const std::unique_ptr<FrameBuffer> &buffer = buffers[i];
+                if (!buffer) {
+                    cerr << "Invalid buffer" << endl;
+                    return false;
+                }
+                
+                // Map buffer memory
+                const FrameBuffer::Plane &plane = buffer->planes()[0];
+                void *memory = mmap(NULL, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+                if (memory == MAP_FAILED) {
+                    cerr << "Failed to mmap buffer: " << strerror(errno) << endl;
+                    return false;
+                }
+                
+                mMappedBuffers[buffer.get()] = static_cast<uint8_t*>(memory);
+                
+                // Create request
+                std::unique_ptr<Request> request = mCamera->createRequest();
+                if (!request) {
+                    cerr << "Failed to create request" << endl;
+                    return false;
+                }
+                
+                int ret = request->addBuffer(stream, buffer.get());
+                if (ret < 0) {
+                    cerr << "Failed to add buffer to request: " << ret << endl;
+                    return false;
+                }
+                
+                mRequests.push_back(std::move(request));
+            }
+        }
+        
+        cout << "Initialization complete" << endl;
+        return true;
     }
     
     void start() {
@@ -419,10 +428,10 @@ void signalHandler(int signum) {
     g_running = false;
 }
 
-// Process camera frame
+// Process camera frame - OPTIMIZED FOR MEMORY USAGE
 void processCameraFrame(cv::Mat& frame, Net& net) {
     try {
-        // 添加额外的检查
+        // Add extra checks
         if (net.empty()) {
             cerr << "Error: Neural network is empty" << endl;
             return;
@@ -433,13 +442,11 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
             return;
         }
         
-        // 创建备份副本
-        cv::Mat frameCopy = frame.clone();
-        
-        // 创建4D blob
+        // Create 4D blob
         cv::Mat blob;
         try {
-            blobFromImage(frameCopy, blob, 1/127.5, cv::Size(inpWidth, inpHeight), 
+            // Use a shallow copy to avoid extra memory usage
+            blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), 
                           cv::Scalar(127.5, 127.5, 127.5), true, false);
             
             if (blob.empty()) {
@@ -451,45 +458,48 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
             return;
         }
         
-        // 设置网络输入
+        // Set network input
         try {
             net.setInput(blob);
         } catch (const cv::Exception& e) {
             cerr << "Exception in setInput: " << e.what() << endl;
+            blob.release(); // Explicitly release memory
             return;
         }
         
-        // 运行前向传播
+        // Run forward pass
         vector<cv::Mat> outs;
         try {
-            // 获取输出层名称
+            // Get output layer names
             vector<String> outNames = getOutputsNames(net);
             if (outNames.empty()) {
                 cerr << "Error: Failed to get output layer names" << endl;
+                blob.release(); // Explicitly release memory
                 return;
             }
             
-            // 运行前向传播
+            // Run forward pass
             net.forward(outs, outNames);
             
             if (outs.empty()) {
                 cerr << "Error: Network produced no outputs" << endl;
+                blob.release(); // Explicitly release memory
                 return;
             }
         } catch (const cv::Exception& e) {
             cerr << "Exception in forward: " << e.what() << endl;
+            blob.release(); // Explicitly release memory
             return;
         }
         
-        // 移除低置信度边界框
+        // Remove low confidence bounding boxes
         try {
             postprocess(frame, outs);
         } catch (const cv::Exception& e) {
             cerr << "Exception in postprocess: " << e.what() << endl;
-            return;
         }
         
-        // 显示性能信息
+        // Show performance information
         try {
             vector<double> layersTimes;
             double freq = getTickFrequency() / 1000;
@@ -499,6 +509,14 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
         } catch (const cv::Exception& e) {
             cerr << "Exception in performance display: " << e.what() << endl;
         }
+        
+        // Explicitly release memory
+        blob.release();
+        for(auto& out : outs) {
+            out.release();
+        }
+        outs.clear();
+        
     } catch (const cv::Exception& e) {
         cerr << "Exception in processCameraFrame: " << e.what() << endl;
     } catch (const std::exception& e) {
@@ -602,4 +620,4 @@ vector<String> getOutputsNames(const Net& net)
             names[i] = layersNames[outLayers[i] - 1];
     }
     return names;
-} 
+}
