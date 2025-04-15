@@ -13,60 +13,60 @@ MPU6050::MPU6050() :
 }
 
 MPU6050::~MPU6050() {
-    // 关闭I2C接口
+    // Close the I2C interface
     i2c_.close();
 }
 
 bool MPU6050::initialize(const std::string& i2c_device) {
-    // 初始化I2C接口
+    // Initialize the I2C interface
     if (!i2c_.initialize(i2c_device, MPU6050_I2C_ADDRESS)) {
-        std::cerr << "无法初始化I2C接口" << std::endl;
+        std::cerr << "Failed to initialize I2C interface" << std::endl;
         return false;
     }
     
-    // 唤醒MPU6050
+    // Wake up the MPU6050
     if (!i2c_.writeByte(MPU6050_REG_PWR_MGMT_1, 0x00)) {
-        std::cerr << "无法唤醒MPU6050" << std::endl;
+        std::cerr << "Failed to wake up MPU6050" << std::endl;
         return false;
     }
     
-    // 检查设备ID
+    // Check the device ID
     if (!testConnection()) {
-        std::cerr << "MPU6050连接测试失败" << std::endl;
+        std::cerr << "MPU6050 connection test failed" << std::endl;
         return false;
     }
     
-    // 设置采样率分频器
+    // Set the sample rate divider
     if (!i2c_.writeByte(MPU6050_REG_SMPLRT_DIV, 0x07)) {
         return false;
     }
     
-    // 设置配置寄存器 (DLPF设置)
+    // Set the configuration register (DLPF setting)
     if (!i2c_.writeByte(MPU6050_REG_CONFIG, 0x06)) {
         return false;
     }
     
-    // 设置陀螺仪量程
+    // Set the gyroscope range
     if (!setGyroRange(GyroRange::RANGE_250_DEG)) {
         return false;
     }
     
-    // 设置加速度计量程
+    // Set the accelerometer range
     if (!setAccelRange(AccelRange::RANGE_2_G)) {
         return false;
     }
     
-    // 关闭FIFO
+    // Disable FIFO
     if (!i2c_.writeByte(MPU6050_REG_FIFO_EN, 0x00)) {
         return false;
     }
     
-    // 关闭中断
+    // Disable interrupts
     if (!i2c_.writeByte(MPU6050_REG_INT_ENABLE, 0x00)) {
         return false;
     }
     
-    // 完全初始化成功后，执行校准
+    // After complete initialization, perform sensor calibration
     return calibrateSensors();
 }
 
@@ -98,7 +98,7 @@ std::array<int16_t, 3> MPU6050::readRawAccel() {
     accel[1] = (buffer[2] << 8) | buffer[3];
     accel[2] = (buffer[4] << 8) | buffer[5];
     
-    // 应用校准偏移
+    // Apply calibration offset
     accel[0] -= accel_offset_[0];
     accel[1] -= accel_offset_[1];
     accel[2] -= accel_offset_[2];
@@ -118,7 +118,7 @@ std::array<int16_t, 3> MPU6050::readRawGyro() {
     gyro[1] = (buffer[2] << 8) | buffer[3];
     gyro[2] = (buffer[4] << 8) | buffer[5];
     
-    // 应用校准偏移
+    // Apply calibration offset
     gyro[0] -= gyro_offset_[0];
     gyro[1] -= gyro_offset_[1];
     gyro[2] -= gyro_offset_[2];
@@ -134,7 +134,7 @@ float MPU6050::readTemperature() {
     
     int16_t raw_temp = (buffer[0] << 8) | buffer[1];
     
-    // 根据数据手册的温度转换公式
+    // Convert raw temperature using the formula from the datasheet
     return (raw_temp / 340.0f) + 36.53f;
 }
 
@@ -178,28 +178,28 @@ AttitudeData MPU6050::calculateAttitude() {
     float accel_y = accel[1] / accelSensitivity();
     float accel_z = accel[2] / accelSensitivity();
     
-    // 简单地根据加速度计计算roll和pitch (弧度)
+    // Calculate roll and pitch from accelerometer data (in radians)
     attitude.roll = atan2(accel_y, sqrt(accel_x * accel_x + accel_z * accel_z));
     attitude.pitch = atan2(-accel_x, sqrt(accel_y * accel_y + accel_z * accel_z));
     
-    // 转换为角度
+    // Convert to degrees
     attitude.roll *= 180.0f / M_PI;
     attitude.pitch *= 180.0f / M_PI;
     
-    // 注意：这个简单的计算无法提供yaw角度，需要磁力计或者复杂的传感器融合算法
+    // Note: This simple calculation does not provide a yaw angle; a magnetometer or complex sensor fusion algorithms are needed.
     attitude.yaw = 0.0f;
     
     return attitude;
 }
 
 bool MPU6050::calibrateSensors() {
-    std::cout << "校准传感器中，请确保设备静止..." << std::endl;
+    std::cout << "Calibrating sensors, please ensure the device is stationary..." << std::endl;
     
     const int num_samples = 100;
     std::array<int32_t, 3> accel_sum = {0, 0, 0};
     std::array<int32_t, 3> gyro_sum = {0, 0, 0};
     
-    // 收集多个样本
+    // Collect multiple samples
     for (int i = 0; i < num_samples; i++) {
         auto accel = readRawAccel();
         auto gyro = readRawGyro();
@@ -209,19 +209,19 @@ bool MPU6050::calibrateSensors() {
             gyro_sum[j] += gyro[j];
         }
         
-        usleep(10000); // 等待10ms
+        usleep(10000); // Wait 10ms
     }
     
-    // 计算平均值作为偏移量
+    // Calculate the average as the offset
     for (int i = 0; i < 3; i++) {
         accel_offset_[i] = accel_sum[i] / num_samples;
         gyro_offset_[i] = gyro_sum[i] / num_samples;
     }
     
-    // Z轴加速度计应该读取到1g (地球重力)，所以我们调整z轴偏移
+    // The accelerometer's Z-axis should read 1g (earth gravity), so adjust the Z-axis offset accordingly
     accel_offset_[2] -= static_cast<int16_t>(accelSensitivity());
     
-    std::cout << "传感器校准完成" << std::endl;
+    std::cout << "Sensor calibration completed" << std::endl;
     
     return true;
 }
@@ -232,5 +232,5 @@ bool MPU6050::testConnection() {
         return false;
     }
     
-    return (who_am_i == 0x68); // MPU6050应返回0x68
-} 
+    return (who_am_i == 0x68); // MPU6050 should return 0x68
+}
