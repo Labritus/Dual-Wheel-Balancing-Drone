@@ -261,7 +261,7 @@ public:
         cout << "Loading model weights from: " << modelWeights << endl;
         
         try {
-            // 检查文件是否存在
+            // Check file existence
             ifstream configFile(modelConfiguration);
             ifstream weightsFile(modelWeights);
             
@@ -274,7 +274,7 @@ public:
                 return false;
             }
             
-            // 获取文件大小
+            // Get file size
             configFile.seekg(0, ios::end);
             size_t configSize = configFile.tellg();
             weightsFile.seekg(0, ios::end);
@@ -288,15 +288,21 @@ public:
                 return false;
             }
             
-            // Fix: Corrected call to zeros by passing explicit dimensions
-            vector<int> inputDims = {1, 3, 300, 300};
-            Mat dummyInput = Mat::zeros(inputDims[0], inputDims[2], CV_32F); // Corrected call to zeros
-            mNet.setInput(dummyInput);
-            vector<Mat> dummy;
-            mNet.forward(dummy, getOutputsNames(mNet));
-            cout << "Pre-initialized network" << endl;
+            // Pre-initialize network
+            cout << "Warming up the network..." << endl;
+            Mat dummy(300, 300, CV_8UC3, Scalar(0, 0, 0));
+            Mat inputBlob;
+            blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
+                     Scalar(127.5, 127.5, 127.5), true, false);
+            mNet.setInput(inputBlob);
+            
+            vector<Mat> dummyOutput;
+            mNet.forward(dummyOutput, getOutputsNames(mNet));
+            cout << "Network warmup successful" << endl;
         } catch (const cv::Exception& e) {
-            cerr << "Exception checking network layers: " << e.what() << endl;
+            cerr << "Exception during warmup forward pass: " << e.what() << endl;
+            cerr << "This may indicate a model compatibility issue" << endl;
+            return false;
         }
         
         // Setup camera
