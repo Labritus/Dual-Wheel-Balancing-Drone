@@ -67,11 +67,13 @@ mkdir build
 cd build
 cmake ..
 make
+```
 
 ### Running the System
 
 ```bash
 ./cpp_drone
+```
 
 ## Data Logging Files
 
