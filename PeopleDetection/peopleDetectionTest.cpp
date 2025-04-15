@@ -295,71 +295,71 @@ public:
             blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
                      Scalar(127.5, 127.5, 127.5), true, false);
             mNet.setInput(inputBlob);
-            
+
             vector<Mat> dummyOutput;
             mNet.forward(dummyOutput, getOutputsNames(mNet));
             cout << "Network warmup successful" << endl;
+
+            // Setup camera
+            if (!setupCamera()) {
+                return false;
+            }
+
+            // Map buffers
+            for (StreamConfiguration &cfg : *mConfig) {
+                Stream *stream = cfg.stream();
+                if (!stream) {
+                    cerr << "Invalid stream" << endl;
+                    return false;
+                }
+                
+                const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
+                if (buffers.empty()) {
+                    cerr << "No buffers allocated for stream" << endl;
+                    return false;
+                }
+                
+                for (unsigned int i = 0; i < buffers.size(); ++i) {
+                    const std::unique_ptr<FrameBuffer> &buffer = buffers[i];
+                    if (!buffer) {
+                        cerr << "Invalid buffer" << endl;
+                        return false;
+                    }
+                    
+                    // Map buffer memory
+                    const FrameBuffer::Plane &plane = buffer->planes()[0];
+                    void *memory = mmap(NULL, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+                    if (memory == MAP_FAILED) {
+                        cerr << "Failed to mmap buffer: " << strerror(errno) << endl;
+                        return false;
+                    }
+                    
+                    mMappedBuffers[buffer.get()] = static_cast<uint8_t*>(memory);
+                    
+                    // Create request
+                    std::unique_ptr<Request> request = mCamera->createRequest();
+                    if (!request) {
+                        cerr << "Failed to create request" << endl;
+                        return false;
+                    }
+                    
+                    int ret = request->addBuffer(stream, buffer.get());
+                    if (ret < 0) {
+                        cerr << "Failed to add buffer to request: " << ret << endl;
+                        return false;
+                    }
+                    
+                    mRequests.push_back(std::move(request));
+                }
+            }
+
+            cout << "Initialization complete" << endl;
+            return true;
         } catch (const cv::Exception& e) {
             cerr << "Exception during warmup forward pass: " << e.what() << endl;
             cerr << "This may indicate a model compatibility issue" << endl;
             return false;
         }
-        
-        // Setup camera
-        if (!setupCamera()) {
-            return false;
-        }
-        
-        // Map buffers
-        for (StreamConfiguration &cfg : *mConfig) {
-            Stream *stream = cfg.stream();
-            if (!stream) {
-                cerr << "Invalid stream" << endl;
-                return false;
-            }
-            
-            const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
-            if (buffers.empty()) {
-                cerr << "No buffers allocated for stream" << endl;
-                return false;
-            }
-            
-            for (unsigned int i = 0; i < buffers.size(); ++i) {
-                const std::unique_ptr<FrameBuffer> &buffer = buffers[i];
-                if (!buffer) {
-                    cerr << "Invalid buffer" << endl;
-                    return false;
-                }
-                
-                // Map buffer memory
-                const FrameBuffer::Plane &plane = buffer->planes()[0];
-                void *memory = mmap(NULL, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
-                if (memory == MAP_FAILED) {
-                    cerr << "Failed to mmap buffer: " << strerror(errno) << endl;
-                    return false;
-                }
-                
-                mMappedBuffers[buffer.get()] = static_cast<uint8_t*>(memory);
-                
-                // Create request
-                std::unique_ptr<Request> request = mCamera->createRequest();
-                if (!request) {
-                    cerr << "Failed to create request" << endl;
-                    return false;
-                }
-                
-                int ret = request->addBuffer(stream, buffer.get());
-                if (ret < 0) {
-                    cerr << "Failed to add buffer to request: " << ret << endl;
-                    return false;
-                }
-                
-                mRequests.push_back(std::move(request));
-            }
-        }
-        
-        cout << "Initialization complete" << endl;
-        return true;
     }
     
     void start() {
