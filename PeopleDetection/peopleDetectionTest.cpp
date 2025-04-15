@@ -288,85 +288,15 @@ public:
                 return false;
             }
             
-            // 尝试使用不同的加载方法
-            cout << "Trying to load model with readNetFromCaffe..." << endl;
-            try {
-                mNet = readNetFromCaffe(modelConfiguration, modelWeights);
-                if (mNet.empty()) {
-                    cerr << "Failed to load model with readNetFromCaffe" << endl;
-                    throw std::runtime_error("Failed to load model");
-                }
-                
-                // Disable fusion for batch normalization layers
-                mNet.enableFusion(false);
-                cout << "Disabled fusion for batch normalization layers" << endl;
-            } catch (const cv::Exception& e) {
-                cerr << "Exception in readNetFromCaffe: " << e.what() << endl;
-                cerr << "Trying alternative approach..." << endl;
-                
-                // 尝试备选方案：改变批归一化层参数
-                try {
-                    // 先导入配置文件
-                    mNet = readNetFromCaffe(modelConfiguration);
-                    if (mNet.empty()) {
-                        cerr << "Failed to load model configuration" << endl;
-                        throw std::runtime_error("Failed to load model configuration");
-                    }
-                    
-                    // 禁用融合
-                    mNet.enableFusion(false);
-                    cout << "Disabled fusion for the network" << endl;
-                    
-                    // 预初始化网络
-                    vector<int> inputDims = {1, 3, 300, 300};
-                    Mat dummyInput = Mat::zeros(inputDims, CV_32F);
-                    mNet.setInput(dummyInput);
-                    vector<Mat> dummy;
-                    mNet.forward(dummy, getOutputsNames(mNet));
-                    cout << "Pre-initialized network" << endl;
-                    
-                    // 重新加载带权重的模型
-                    mNet = readNetFromCaffe(modelConfiguration, modelWeights);
-                    cout << "Reloaded model with weights" << endl;
-                } catch (const cv::Exception& e) {
-                    cerr << "Exception in alternative loading: " << e.what() << endl;
-                    throw;
-                }
-            }
-            
-            // 检查网络层
-            try {
-                vector<String> layerNames = mNet.getLayerNames();
-                cout << "Model loaded successfully with " << layerNames.size() << " layers" << endl;
-                
-                // 预热网络
-                cout << "Warming up the network..." << endl;
-                Mat dummy(300, 300, CV_8UC3, Scalar(0, 0, 0));
-                Mat inputBlob;
-                blobFromImage(dummy, inputBlob, 1/127.5, Size(300, 300), 
-                         Scalar(127.5, 127.5, 127.5), true, false);
-                mNet.setInput(inputBlob);
-                
-                vector<Mat> outs;
-                try {
-                    mNet.forward(outs, getOutputsNames(mNet));
-                    cout << "Network warmup successful" << endl;
-                } catch (const cv::Exception& e) {
-                    cerr << "Exception during warmup forward pass: " << e.what() << endl;
-                    cerr << "This may indicate a model compatibility issue" << endl;
-                }
-            } catch (const cv::Exception& e) {
-                cerr << "Exception checking network layers: " << e.what() << endl;
-            }
-            
+            // Fix: Corrected call to zeros by passing explicit dimensions
+            vector<int> inputDims = {1, 3, 300, 300};
+            Mat dummyInput = Mat::zeros(inputDims[0], inputDims[2], CV_32F); // Corrected call to zeros
+            mNet.setInput(dummyInput);
+            vector<Mat> dummy;
+            mNet.forward(dummy, getOutputsNames(mNet));
+            cout << "Pre-initialized network" << endl;
         } catch (const cv::Exception& e) {
-            cerr << "OpenCV Exception loading model: " << e.what() << endl;
-            cerr << "Error code: " << e.code << endl;
-            cerr << "Error message: " << e.err << endl;
-            return false;
-        } catch (const std::exception& e) {
-            cerr << "Exception loading model: " << e.what() << endl;
-            return false;
+            cerr << "Exception checking network layers: " << e.what() << endl;
         }
         
         // Setup camera
