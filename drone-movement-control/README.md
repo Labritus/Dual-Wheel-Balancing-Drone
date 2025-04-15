@@ -1,97 +1,82 @@
-# C++无人机控制系统
+# C++ Drone Control System
 
-这个项目是一个用C++编写的无人机控制系统原型，专注于架构设计和模块化组件。系统实现了姿态控制、位置控制、数据记录和状态管理等功能。
+This project is a prototype of a drone control system written in C++, focusing on architectural design and modular components. The system implements features such as attitude control, position control, data logging, and state management.
 
-## 功能特点
+## Features
 
-- 无人机姿态控制（Roll, Pitch, Yaw）
-- 基于PID算法的位置和速度控制
-- 电机输出管理
-- 电池监控
-- 状态管理和事件追踪
-- 数据记录（CSV和JSON格式）
-- 可扩展的回调系统
+- Drone attitude control (Roll, Pitch, Yaw)
+- PID algorithm-based position and speed control
+- Motor output management
+- Battery monitoring
+- State management and event tracking
+- Data logging (in both CSV and JSON formats)
+- Expandable callback system
 
-## 系统架构
+## System Architecture
 
-系统由以下主要组件组成：
+The system is composed of the following main components:
 
-### 1. DroneController（无人机控制器）
+### 1. DroneController
 
-核心控制器，负责：
-- 处理传感器输入
-- 执行PID控制计算
-- 管理电机输出
-- 处理系统状态变化
+The core controller is responsible for:
+- Processing sensor inputs
+- Executing PID control computations
+- Managing motor outputs
+- Handling system state changes
 
-### 2. 硬件抽象
+### 2. Hardware Abstraction
 
-- `MPU6050`：IMU传感器接口，用于获取姿态数据
-- `MotorController`：电机控制接口
-- `EncoderReader`：编码器读取器，用于位置和速度测量
+- `MPU6050`: IMU sensor interface used for obtaining attitude data
+- `MotorController`: Motor control interface
+- `EncoderReader`: Encoder reader for position and speed measurements
 
-### 3. 控制算法
+### 3. Control Algorithms
 
-- `PIDController`：实现PID控制算法，支持位置和速度控制模式
+- `PIDController`: Implements the PID control algorithm, supporting both position and speed control modes
 
-### 4. 状态管理和数据记录
+### 4. State Management and Data Logging
 
-- `DroneStatusInterface`：状态管理和数据导出接口，用于：
-  - 收集和记录系统状态数据
-  - 以CSV格式导出飞行数据
-  - 记录JSON格式的事件日志
-  - 支持注册回调函数实现数据处理和导出
+- `DroneStatusInterface`: The state management and data export interface is used to:
+  - Collect and record system status data
+  - Export flight data in CSV format
+  - Log event records in JSON format
+  - Support callback functions for data processing and export
 
-### 5. 回调系统
+### 5. Callback System
 
-系统实现了丰富的回调接口，用于响应各种事件：
-- 姿态更新回调
-- 电池电压更新回调
-- 电机输出回调
-- 错误处理回调
-- 状态变化回调
-- 数据导出回调
+The system features a rich set of callback interfaces to respond to various events:
+- Attitude update callbacks
+- Battery voltage update callbacks
+- Motor output callbacks
+- Error handling callbacks
+- State change callbacks
+- Data export callbacks
 
-## 构建和运行
+## Building and Running
 
-### 依赖项
+### Dependencies
 
-- C++17或更高版本
+- C++17 or higher
 - CMake 3.10+
-- Linux系统（用于I2C和GPIO访问）
+- Linux system (for I2C and GPIO access)
 
-### 构建步骤
+### Build Steps
 
 ```bash
 mkdir build
 cd build
 cmake ..
 make
-```
 
-### 运行系统
+### Running the System
 
 ```bash
 ./cpp_drone
-```
 
-## 数据记录文件
+## Data Logging Files
 
-系统会生成以下记录文件：
+The system will generate the following log files:
 
-1. `drone_log.txt` - 系统日志，记录各种事件和状态变化
-2. `drone_status.csv` - CSV格式的飞行数据记录（姿态、电池电压、电机输出等）
-3. `drone_events.json` - JSON格式的事件记录（错误、状态变化等）
-
-## 扩展功能
-
-系统设计为易于扩展，可以添加更多功能：
-
-- 支持更多种类的传感器
-- 添加无线通信模块
-- 实现自主导航
-- 集成计算机视觉功能
-
-## 许可证
-
-[指定您的许可证类型] 
+1. `drone_log.txt` - System log recording various events and state changes
+2. `drone_status.csv` - Flight data logs in CSV format (attitude, battery voltage, motor outputs, etc.)
+3. `drone_events.json` - Event logs in JSON format (errors, state changes, etc.)
