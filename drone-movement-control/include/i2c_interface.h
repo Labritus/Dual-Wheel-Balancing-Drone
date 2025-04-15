@@ -9,24 +9,24 @@ public:
     I2CInterface();
     ~I2CInterface();
     
-    // 初始化I2C总线
+    // Initialize the I2C bus
     bool initialize(const std::string& device, uint8_t address);
     
-    // 关闭I2C总线
+    // Close the I2C bus
     void close();
     
-    // 读取寄存器值
+    // Read the register value
     bool readByte(uint8_t reg, uint8_t* data);
     bool readBytes(uint8_t reg, uint8_t* data, size_t length);
     
-    // 写入寄存器值
+    // Write the register value
     bool writeByte(uint8_t reg, uint8_t data);
     bool writeBytes(uint8_t reg, uint8_t* data, size_t length);
     
 private:
-    int fd_; // 文件描述符
-    uint8_t address_; // 设备地址
-    bool initialized_; // 初始化状态
+    int fd_;          // File descriptor
+    uint8_t address_; // Device address
+    bool initialized_; // Initialization status
 };
 
-#endif // I2C_INTERFACE_H 
+#endif // I2C_INTERFACE_H
