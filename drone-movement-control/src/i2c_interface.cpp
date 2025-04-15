@@ -18,18 +18,18 @@ bool I2CInterface::initialize(const std::string& device, uint8_t address) {
         return true;
     }
     
-    // 打开I2C设备
+    // Open the I2C device
     fd_ = ::open(device.c_str(), O_RDWR);
     if (fd_ < 0) {
-        std::cerr << "无法打开I2C设备：" << device << std::endl;
+        std::cerr << "Unable to open I2C device: " << device << std::endl;
         return false;
     }
     
     address_ = address;
     
-    // 设置I2C从设备地址
+    // Set the I2C slave address
     if (ioctl(fd_, I2C_SLAVE, address_) < 0) {
-        std::cerr << "无法设置I2C从设备地址：0x" << std::hex << (int)address_ << std::endl;
+        std::cerr << "Unable to set I2C slave address: 0x" << std::hex << (int)address_ << std::endl;
         ::close(fd_);
         fd_ = -1;
         return false;
@@ -108,4 +108,4 @@ bool I2CInterface::writeBytes(uint8_t reg, uint8_t* data, size_t length) {
     
     delete[] buf;
     return result;
-} 
+}
