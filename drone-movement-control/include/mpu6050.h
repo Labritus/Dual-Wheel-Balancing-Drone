@@ -6,7 +6,7 @@
 #include <array>
 #include <string>
 
-// MPU6050寄存器地址
+// MPU6050 register addresses
 constexpr uint8_t MPU6050_REG_SMPLRT_DIV = 0x19;
 constexpr uint8_t MPU6050_REG_CONFIG = 0x1A;
 constexpr uint8_t MPU6050_REG_GYRO_CONFIG = 0x1B;
@@ -22,7 +22,7 @@ constexpr uint8_t MPU6050_REG_PWR_MGMT_1 = 0x6B;
 constexpr uint8_t MPU6050_REG_PWR_MGMT_2 = 0x6C;
 constexpr uint8_t MPU6050_REG_WHO_AM_I = 0x75;
 
-// 陀螺仪量程配置
+// Gyroscope range configuration
 enum class GyroRange {
     RANGE_250_DEG = 0x00,
     RANGE_500_DEG = 0x08,
@@ -30,7 +30,7 @@ enum class GyroRange {
     RANGE_2000_DEG = 0x18
 };
 
-// 加速度计量程配置
+// Accelerometer range configuration
 enum class AccelRange {
     RANGE_2_G = 0x00,
     RANGE_4_G = 0x08,
@@ -38,7 +38,7 @@ enum class AccelRange {
     RANGE_16_G = 0x18
 };
 
-// 姿态数据
+// Attitude data
 struct AttitudeData {
     float roll;
     float pitch;
@@ -50,47 +50,47 @@ public:
     MPU6050();
     ~MPU6050();
     
-    // 初始化MPU6050
+    // Initialize the MPU6050
     bool initialize(const std::string& i2c_device);
     
-    // 设置陀螺仪量程
+    // Set the gyroscope range
     bool setGyroRange(GyroRange range);
     
-    // 设置加速度计量程
+    // Set the accelerometer range
     bool setAccelRange(AccelRange range);
     
-    // 读取原始加速度数据
+    // Read raw accelerometer data
     std::array<int16_t, 3> readRawAccel();
     
-    // 读取原始陀螺仪数据
+    // Read raw gyroscope data
     std::array<int16_t, 3> readRawGyro();
     
-    // 读取温度数据
+    // Read temperature data
     float readTemperature();
     
-    // 通过简单算法计算姿态
+    // Calculate attitude using a simple algorithm
     AttitudeData calculateAttitude();
     
-    // 校准传感器
+    // Calibrate the sensors
     bool calibrateSensors();
     
-    // 检查传感器是否连接正常
+    // Test if the sensor is connected properly
     bool testConnection();
     
 private:
     I2CInterface i2c_;
     
-    // 当前传感器量程
+    // Current sensor ranges
     GyroRange gyro_range_;
     AccelRange accel_range_;
     
-    // 传感器校准偏移值
+    // Sensor calibration offsets
     std::array<int16_t, 3> accel_offset_;
     std::array<int16_t, 3> gyro_offset_;
     
-    // 内部辅助函数
+    // Internal helper functions
     float accelSensitivity();
     float gyroSensitivity();
 };
 
-#endif // MPU6050_H 
+#endif // MPU6050_H
