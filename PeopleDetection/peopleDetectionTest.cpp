@@ -266,11 +266,11 @@ public:
             ifstream weightsFile(modelWeights);
             
             if (!configFile.is_open()) {
-                cerr << "Could not open model configuration file" << endl;
+                cerr << "Could not open model configuration file: " << modelConfiguration << endl;
                 return false;
             }
             if (!weightsFile.is_open()) {
-                cerr << "Could not open model weights file" << endl;
+                cerr << "Could not open model weights file: " << modelWeights << endl;
                 return false;
             }
             
@@ -329,23 +329,6 @@ public:
                     cerr << "Exception in alternative loading: " << e.what() << endl;
                     throw;
                 }
-            }
-            
-            // 设置后端和目标
-            cout << "Setting backend and target..." << endl;
-            try {
-                // 尝试使用不同的后端
-                cout << "Available backends:" << endl;
-                cout << "  DNN_BACKEND_OPENCV: " << DNN_BACKEND_OPENCV << endl;
-                cout << "  DNN_BACKEND_INFERENCE_ENGINE: " << DNN_BACKEND_INFERENCE_ENGINE << endl;
-                
-                // 选择最佳可用后端
-                mNet.setPreferableBackend(DNN_BACKEND_OPENCV);
-                mNet.setPreferableTarget(DNN_TARGET_CPU);
-                cout << "Set backend to OPENCV and target to CPU" << endl;
-            } catch (const cv::Exception& e) {
-                cerr << "Exception setting backend: " << e.what() << endl;
-                cerr << "Using default backend and target" << endl;
             }
             
             // 检查网络层
