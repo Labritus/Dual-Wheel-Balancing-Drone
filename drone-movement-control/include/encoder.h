@@ -11,54 +11,54 @@ public:
     Encoder();
     ~Encoder();
     
-    // 初始化编码器
+    // Initialize the encoder
     bool initialize(int pin_a, int pin_b);
     
-    // 读取当前计数值
+    // Read the current count value
     int getCount() const;
     
-    // 读取当前速度 (计数/秒)
+    // Read the current velocity (counts per second)
     int getVelocity() const;
     
-    // 重置计数器
+    // Reset the counter
     void resetCount();
     
-    // 开始计数
+    // Start counting
     void start();
     
-    // 停止计数
+    // Stop counting
     void stop();
     
-    // 检查编码器是否在运行
+    // Check if the encoder is running
     bool isRunning() const;
     
 private:
-    // 引脚编号
+    // Pin numbers
     int pin_a_;
     int pin_b_;
     
-    // GPIO接口
+    // GPIO interface
     GPIOInterface gpio_;
     
-    // 计数器和速度
+    // Counter and velocity
     std::atomic<int> count_;
     std::atomic<int> velocity_;
     
-    // 运行状态
+    // Running status
     std::atomic<bool> running_;
     
-    // 上次状态
+    // Last states
     int last_state_a_;
     int last_state_b_;
     
-    // 用于计算速度的时间戳
+    // Timestamp for velocity calculation
     std::chrono::steady_clock::time_point last_time_;
     
-    // 监控线程
+    // Monitoring thread
     std::thread monitor_thread_;
     
-    // 监控函数
+    // Monitoring function
     void monitorPins();
 };
 
-#endif // ENCODER_H 
+#endif // ENCODER_H
