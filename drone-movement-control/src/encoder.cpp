@@ -18,22 +18,22 @@ Encoder::~Encoder() {
 }
 
 bool Encoder::initialize(int pin_a, int pin_b) {
-    // 保存引脚编号
+    // Save the pin numbers
     pin_a_ = pin_a;
     pin_b_ = pin_b;
     
-    // 初始化GPIO引脚
+    // Initialize the GPIO pins
     if (!gpio_.initialize(pin_a_, PinMode::INPUT) ||
         !gpio_.initialize(pin_b_, PinMode::INPUT)) {
-        std::cerr << "无法初始化编码器引脚" << std::endl;
+        std::cerr << "Failed to initialize encoder pins" << std::endl;
         return false;
     }
     
-    // 获取初始状态
+    // Get the initial state
     last_state_a_ = gpio_.digitalRead(pin_a_) == PinState::HIGH ? 1 : 0;
     last_state_b_ = gpio_.digitalRead(pin_b_) == PinState::HIGH ? 1 : 0;
     
-    // 重置计数器
+    // Reset the counter
     resetCount();
     
     return true;
@@ -82,48 +82,48 @@ void Encoder::monitorPins() {
     auto last_velocity_update = std::chrono::steady_clock::now();
     
     while (running_) {
-        // 读取当前状态
+        // Read the current state
         int state_a = gpio_.digitalRead(pin_a_) == PinState::HIGH ? 1 : 0;
         int state_b = gpio_.digitalRead(pin_b_) == PinState::HIGH ? 1 : 0;
         
-        // 检测状态变化
+        // Detect state changes
         if (state_a != last_state_a_) {
-            // A相变化
+            // A-phase changed
             if (state_b != state_a) {
-                // 顺时针旋转
+                // Clockwise rotation
                 count_++;
             } else {
-                // 逆时针旋转
+                // Counter-clockwise rotation
                 count_--;
             }
         } else if (state_b != last_state_b_) {
-            // B相变化
+            // B-phase changed
             if (state_a == state_b) {
-                // 顺时针旋转
+                // Clockwise rotation
                 count_++;
             } else {
-                // 逆时针旋转
+                // Counter-clockwise rotation
                 count_--;
             }
         }
         
-        // 保存当前状态
+        // Save the current state
         last_state_a_ = state_a;
         last_state_b_ = state_b;
         
-        // 每100ms更新一次速度
+        // Update velocity every 100ms
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_velocity_update).count();
         
         if (elapsed >= 100) {
             int count_diff = count_ - last_count;
-            velocity_ = count_diff * 1000 / elapsed; // 计数/秒
+            velocity_ = count_diff * 1000 / elapsed; // counts per second
             
             last_count = count_;
             last_velocity_update = now;
         }
         
-        // 短暂休眠以避免CPU占用过高
+        // Brief sleep to reduce CPU usage
         usleep(1000); // 1ms
     }
-} 
+}
