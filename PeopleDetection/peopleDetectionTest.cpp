@@ -27,10 +27,10 @@ using namespace std::chrono_literals;
 atomic<bool> g_running{true};
 
 // Neural network parameters - REDUCED DIMENSIONS
-float confThreshold = 0.5;  // Confidence threshold
+float confThreshold = 0.3;  // Confidence threshold
 float nmsThreshold = 0.4;   // Non-maximum suppression threshold
-int inpWidth = 224;         // Width of network's input image (reduced from 300)
-int inpHeight = 224;        // Height of network's input image (reduced from 300)
+int inpWidth = 300;         // Width of network's input image (reduced from 300)
+int inpHeight = 300;        // Height of network's input image (reduced from 300)
 vector<string> classes;     // Class list
 
 // Function declarations
