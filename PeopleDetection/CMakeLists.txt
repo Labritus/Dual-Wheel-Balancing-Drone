@@ -8,21 +8,20 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftree-vectorize")
 endif()
 
-# Find OpenCV package with all required components
+# Find package required components including explicitly objdetect
 find_package(OpenCV 4 REQUIRED COMPONENTS core dnn highgui videoio imgcodecs imgproc objdetect)
 
 # Find libcamera package
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBCAMERA REQUIRED libcamera)
 
-# Add debug output
+# Debug information
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV libraries: ${OpenCV_LIBS}")
-message(STATUS "OpenCV include dirs: ${OpenCV_INCLUDE_DIRS}")
 message(STATUS "libcamera include dirs: ${LIBCAMERA_INCLUDE_DIRS}")
 message(STATUS "libcamera libraries: ${LIBCAMERA_LIBRARIES}")
 
-# Include directories
+# Include headers
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${LIBCAMERA_INCLUDE_DIRS})
 
@@ -31,27 +30,26 @@ add_executable(peopleDetection peopleDetection.cpp)
 add_executable(camtest Camtest.cpp)
 add_executable(peopleDetectionTest peopleDetectionTest.cpp)
 
-# Link libraries with explicit linking flags
+# Link libraries with correct names
 target_link_libraries(peopleDetection 
     ${OpenCV_LIBS}
     ${LIBCAMERA_LIBRARIES}
-    -llibcamera
-    -llibcamera-base
+    camera
+    camera-base
 )
 
 target_link_libraries(camtest 
     ${OpenCV_LIBS}
     ${LIBCAMERA_LIBRARIES}
-    -llibcamera
-    -llibcamera-base
+    camera
+    camera-base
 )
 
 target_link_libraries(peopleDetectionTest 
     ${OpenCV_LIBS}
     ${LIBCAMERA_LIBRARIES}
-    -llibcamera
-    -llibcamera-base
-    -lopencv_objdetect
+    camera
+    camera-base
 )
 
 # Set C++ standard
