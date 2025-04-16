@@ -27,7 +27,7 @@ using namespace std::chrono_literals;
 atomic<bool> g_running{true};
 
 // Neural network parameters
-float confThreshold = 0.3; // 降低置信度阈值，提高检测率
+float confThreshold = 0.05; // 降低置信度阈值，提高检测率
 float nmsThreshold = 0.5;  // 提高NMS阈值，保留更多检测结果
 int inpWidth = 300;        // 恢复为300，与模型设计匹配
 int inpHeight = 300;       // 恢复为300，与模型设计匹配
@@ -56,6 +56,7 @@ private:
     std::vector<std::unique_ptr<libcamera::Request>> mRequests;
     std::map<libcamera::FrameBuffer *, uint8_t*> mMappedBuffers;
     Net mNet;
+    cv::HOGDescriptor hog; // HOG检测器
     
     bool setupCamera() {
         mCameraManager = std::make_unique<CameraManager>();
@@ -136,6 +137,60 @@ private:
         return true;
     }
     
+    // HOG人员检测函数
+    void detectWithHOG(cv::Mat& frame) {
+        try {
+            if (frame.empty()) {
+                cerr << "Error: Frame is empty for HOG detection" << endl;
+                return;
+            }
+            
+            // 调整大小以加速检测
+            cv::Mat resized;
+            cv::resize(frame, resized, cv::Size(320, 240));
+            
+            // 检测人
+            vector<cv::Rect> found, found_filtered;
+            hog.detectMultiScale(resized, found, 0, cv::Size(8,8), cv::Size(32,32), 1.05, 2);
+            
+            cout << "HOG detected " << found.size() << " potential people" << endl;
+            
+            // 过滤重叠的边界框
+            for (size_t i = 0; i < found.size(); i++) {
+                cv::Rect r = found[i];
+                int j;
+                for (j = 0; j < found.size(); j++) 
+                    if (j != i && (r & found[j]) == r)
+                        break;
+                if (j == found.size())
+                    found_filtered.push_back(r);
+            }
+            
+            // 绘制边界框
+            for (size_t i = 0; i < found_filtered.size(); i++) {
+                cv::Rect r = found_filtered[i];
+                // 调整回原始图像尺寸
+                r.x *= frame.cols / 320.0;
+                r.y *= frame.rows / 240.0;
+                r.width *= frame.cols / 320.0;
+                r.height *= frame.rows / 240.0;
+                
+                cv::rectangle(frame, r.tl(), r.br(), cv::Scalar(0, 255, 0), 2);
+                cv::putText(frame, "Person", r.tl(), cv::FONT_HERSHEY_SIMPLEX, 
+                           0.75, cv::Scalar(0, 255, 0), 2);
+                cout << "Drew HOG detection at: " << r << endl;
+            }
+            
+            resized.release();
+        } catch (const cv::Exception& e) {
+            cerr << "Exception in HOG detection: " << e.what() << endl;
+        } catch (const std::exception& e) {
+            cerr << "Exception in HOG detection: " << e.what() << endl;
+        } catch (...) {
+            cerr << "Unknown exception in HOG detection" << endl;
+        }
+    }
+    
     // Process captured requests
     void requestComplete(libcamera::Request *request) {
         if (request->status() == libcamera::Request::RequestCancelled)
@@ -196,8 +251,11 @@ private:
                 if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
                     cerr << "Invalid frame: empty or has invalid dimensions" << endl;
                 } else {
-                    // 处理图像 - 不再进行额外的缩放
+                    // 首先尝试使用DNN模型检测
                     processCameraFrame(frame, mNet);
+                    
+                    // 然后使用HOG检测器作为备选
+                    detectWithHOG(frame);
                     
                     // 显示图像
                     cv::imshow("People Detection Test", frame);
@@ -253,6 +311,10 @@ public:
     }
 
     bool initialize() {
+        // 初始化HOG检测器
+        hog.setSVMDetector(cv::HOGDescriptor::getDefaultPeopleDetector());
+        cout << "HOG detector initialized" << endl;
+        
         // Load class names
         string classesFile = getModelPath("coco.names");
         ifstream ifs(classesFile.c_str());
@@ -456,11 +518,11 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
         
         cout << "Processing frame, size: " << frame.cols << "x" << frame.rows << endl;
         
-        // 创建4D blob
+        // 创建4D blob - 修改预处理参数
         cv::Mat blob;
         try {
-            blobFromImage(frame, blob, 1.0/127.5, cv::Size(inpWidth, inpHeight), 
-                          cv::Scalar(127.5, 127.5, 127.5), true, false);
+            blobFromImage(frame, blob, 0.007843, cv::Size(inpWidth, inpHeight), 
+                          cv::Scalar(127.5, 127.5, 127.5), false, false);
             
             if (blob.empty()) {
                 cerr << "Error: Failed to create blob from image" << endl;
@@ -499,6 +561,21 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
                 blob.release(); // 显式释放内存
                 return;
             }
+            
+            // 新增：输出网络输出的形状
+            cout << "Network output shape: rows=" << outs[0].rows 
+                 << ", cols=" << outs[0].cols << endl;
+            
+            // 新增：打印第一行数据进行调试
+            if (outs[0].rows > 0) {
+                float* data = (float*)outs[0].data;
+                cout << "First detection data: ";
+                for (int i = 0; i < min(10, outs[0].cols); i++) {
+                    cout << data[i] << " ";
+                }
+                cout << endl;
+            }
+            
         } catch (const cv::Exception& e) {
             cerr << "Exception in forward: " << e.what() << endl;
             blob.release(); // 显式释放内存
@@ -559,8 +636,16 @@ void postprocess(cv::Mat& frame, const vector<cv::Mat>& outs)
             cv::Mat scores = outs[i].row(j).colRange(5, outs[i].cols);
             cv::Point classIdPoint;
             double confidence;
+            
             // 获取最高分值及其位置
             cv::minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
+            
+            // 新增：输出所有潜在检测结果，用于调试
+            if (confidence > 0.01) {  // 使用非常低的阈值进行调试输出
+                cout << "Found potential detection: class=" << classIdPoint.x 
+                     << ", confidence=" << confidence << endl;
+            }
+            
             if (confidence > confThreshold)
             {
                 int centerX = (int)(data[0] * frame.cols);
