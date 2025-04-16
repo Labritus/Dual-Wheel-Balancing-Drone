@@ -26,12 +26,12 @@ using namespace std::chrono_literals;
 // Global variables
 atomic<bool> g_running{true};
 
-// Neural network parameters - REDUCED DIMENSIONS
-float confThreshold = 0.1;  // Confidence threshold
-float nmsThreshold = 0.4;   // Non-maximum suppression threshold
-int inpWidth = 300;         // Width of network's input image (reduced from 300)
-int inpHeight = 300;        // Height of network's input image (reduced from 300)
-vector<string> classes;     // Class list
+// Neural network parameters
+float confThreshold = 0.3; // 降低置信度阈值，提高检测率
+float nmsThreshold = 0.5;  // 提高NMS阈值，保留更多检测结果
+int inpWidth = 300;        // 恢复为300，与模型设计匹配
+int inpHeight = 300;       // 恢复为300，与模型设计匹配
+vector<string> classes;    // Class list
 
 // Function declarations
 void processCameraFrame(cv::Mat& frame, Net& net);
@@ -89,11 +89,11 @@ private:
         StreamConfiguration &streamConfig = mConfig->at(0);
         cout << "Default viewfinder configuration: " << streamConfig.toString() << endl;
         
-        // REDUCED RESOLUTION for lower memory usage
-        streamConfig.size.width = 320;   // Reduced from 640
-        streamConfig.size.height = 240;  // Reduced from 480
+        // 优化：降低分辨率以减少内存使用
+        streamConfig.size.width = 320;   // 降低分辨率
+        streamConfig.size.height = 240;  // 降低分辨率
         streamConfig.pixelFormat = libcamera::formats::YUYV;
-        streamConfig.bufferCount = 2;    // Reduced from 4
+        streamConfig.bufferCount = 2;    // 减少缓冲区数量以节省内存
         
         // Try to validate the configuration
         ret = mConfig->validate();
@@ -145,16 +145,16 @@ private:
             libcamera::FrameBuffer *buffer = request->buffers().begin()->second;
             const libcamera::FrameMetadata &metadata = buffer->metadata();
             
-            // Check pixel format
+            // 检查像素格式
             libcamera::PixelFormat pixelFormat = mConfig->at(0).pixelFormat;
             cv::Mat frame;
             
             if (pixelFormat == libcamera::formats::YUYV) {
-                // Create YUYV format Mat
+                // 创建YUYV格式的Mat
                 cv::Mat yuyv(mConfig->at(0).size.height, mConfig->at(0).size.width, 
                            CV_8UC2, mMappedBuffers[buffer]);
                 
-                // Convert YUYV to RGB
+                // 转换YUYV到RGB
                 cv::cvtColor(yuyv, frame, cv::COLOR_YUV2BGR_YUYV);
             } else if (pixelFormat == libcamera::formats::MJPEG) {
                 const auto& planes = metadata.planes();
@@ -174,7 +174,7 @@ private:
                     goto requeue;
                 }
             } else if (pixelFormat == libcamera::formats::RGB888) {
-                // Direct use of RGB data
+                // 直接使用RGB数据
                 frame = cv::Mat(mConfig->at(0).size.height, mConfig->at(0).size.width, 
                               CV_8UC3, mMappedBuffers[buffer]);
             } else {
@@ -182,23 +182,26 @@ private:
                 goto requeue;
             }
             
-            // Safely process image
+            // 新增：保存一帧用于测试（仅第一次）
+            static bool savedTestFrame = false;
+            if (!savedTestFrame) {
+                cv::imwrite("/home/pu/camera_test.jpg", frame);
+                cout << "Saved test frame to /home/pu/camera_test.jpg" << endl;
+                savedTestFrame = true;
+            }
+            
+            // 安全处理图像
             try {
-                // Check if image is valid before processing
+                // 在处理前检查图像是否有效
                 if (frame.empty() || frame.rows <= 0 || frame.cols <= 0) {
                     cerr << "Invalid frame: empty or has invalid dimensions" << endl;
                 } else {
-                    // Process image (with reduced resolution for better performance)
-                    cv::Mat resizedFrame;
-                    cv::resize(frame, resizedFrame, cv::Size(320, 240));
-                    processCameraFrame(resizedFrame, mNet);
+                    // 处理图像 - 不再进行额外的缩放
+                    processCameraFrame(frame, mNet);
                     
-                    // Display image
-                    cv::imshow("People Detection Test", resizedFrame);
+                    // 显示图像
+                    cv::imshow("People Detection Test", frame);
                     cv::waitKey(1);
-                    
-                    // Explicitly release memory
-                    resizedFrame.release();
                 }
             } catch (const cv::Exception& e) {
                 cerr << "Exception in processCameraFrame: " << e.what() << endl;
@@ -208,7 +211,7 @@ private:
                 cerr << "Unknown exception in processCameraFrame" << endl;
             }
             
-            // Explicitly release frame memory
+            // 显式释放内存
             frame.release();
             
         } catch (const std::exception& e) {
@@ -218,7 +221,7 @@ private:
         }
         
     requeue:
-        // Reuse this request
+        // 重用此请求
         request->reuse(Request::ReuseBuffers);
         if (g_running) {
             mCamera->queueRequest(request);
@@ -262,6 +265,11 @@ public:
         while (getline(ifs, line)) classes.push_back(line);
         cout << "Loaded " << classes.size() << " class names" << endl;
         
+        // 新增：验证第一个类别是否为"person"
+        if (!classes.empty()) {
+            cout << "First class (index 0) is: " << classes[0] << endl;
+        }
+        
         // Load model
         String modelConfiguration = getModelPath("deploy.prototxt");
         String modelWeights = getModelPath("mobilenet_iter_73000.caffemodel");
@@ -270,7 +278,7 @@ public:
         cout << "Loading model weights from: " << modelWeights << endl;
         
         try {
-            // Check if files exist
+            // 检查文件是否存在
             ifstream configFile(modelConfiguration);
             ifstream weightsFile(modelWeights);
             
@@ -283,7 +291,7 @@ public:
                 return false;
             }
             
-            // Get file sizes
+            // 获取文件大小
             configFile.seekg(0, ios::end);
             size_t configSize = configFile.tellg();
             weightsFile.seekg(0, ios::end);
@@ -297,16 +305,20 @@ public:
                 return false;
             }
             
-            // FIXED: Properly load and configure the network
+            // 修正：正确加载和配置网络
             mNet = cv::dnn::readNetFromCaffe(modelConfiguration, modelWeights);
             if (mNet.empty()) {
                 cerr << "Failed to load network" << endl;
                 return false;
             }
             
-            // Set backend and target for optimized performance
+            // 设置后端和目标以优化性能
             mNet.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
             mNet.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+            
+            // 新增：打印网络层信息
+            vector<String> layerNames = mNet.getLayerNames();
+            cout << "Network has " << layerNames.size() << " layers" << endl;
             
             cout << "Network loaded successfully" << endl;
         } catch (const cv::Exception& e) {
@@ -428,10 +440,10 @@ void signalHandler(int signum) {
     g_running = false;
 }
 
-// Process camera frame - OPTIMIZED FOR MEMORY USAGE
+// 优化后的图像处理函数
 void processCameraFrame(cv::Mat& frame, Net& net) {
     try {
-        // Add extra checks
+        // 添加额外的检查
         if (net.empty()) {
             cerr << "Error: Neural network is empty" << endl;
             return;
@@ -442,11 +454,12 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
             return;
         }
         
-        // Create 4D blob
+        cout << "Processing frame, size: " << frame.cols << "x" << frame.rows << endl;
+        
+        // 创建4D blob
         cv::Mat blob;
         try {
-            // Use a shallow copy to avoid extra memory usage
-            blobFromImage(frame, blob, 1/127.5, cv::Size(inpWidth, inpHeight), 
+            blobFromImage(frame, blob, 1.0/127.5, cv::Size(inpWidth, inpHeight), 
                           cv::Scalar(127.5, 127.5, 127.5), true, false);
             
             if (blob.empty()) {
@@ -458,48 +471,48 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
             return;
         }
         
-        // Set network input
+        // 设置网络输入
         try {
             net.setInput(blob);
         } catch (const cv::Exception& e) {
             cerr << "Exception in setInput: " << e.what() << endl;
-            blob.release(); // Explicitly release memory
+            blob.release(); // 显式释放内存
             return;
         }
         
-        // Run forward pass
+        // 运行前向传播
         vector<cv::Mat> outs;
         try {
-            // Get output layer names
+            // 获取输出层名称
             vector<String> outNames = getOutputsNames(net);
             if (outNames.empty()) {
                 cerr << "Error: Failed to get output layer names" << endl;
-                blob.release(); // Explicitly release memory
+                blob.release(); // 显式释放内存
                 return;
             }
             
-            // Run forward pass
+            // 运行前向传播
             net.forward(outs, outNames);
             
             if (outs.empty()) {
                 cerr << "Error: Network produced no outputs" << endl;
-                blob.release(); // Explicitly release memory
+                blob.release(); // 显式释放内存
                 return;
             }
         } catch (const cv::Exception& e) {
             cerr << "Exception in forward: " << e.what() << endl;
-            blob.release(); // Explicitly release memory
+            blob.release(); // 显式释放内存
             return;
         }
         
-        // Remove low confidence bounding boxes
+        // 移除低置信度边界框
         try {
             postprocess(frame, outs);
         } catch (const cv::Exception& e) {
             cerr << "Exception in postprocess: " << e.what() << endl;
         }
         
-        // Show performance information
+        // 显示性能信息
         try {
             vector<double> layersTimes;
             double freq = getTickFrequency() / 1000;
@@ -510,12 +523,14 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
             cerr << "Exception in performance display: " << e.what() << endl;
         }
         
-        // Explicitly release memory
+        // 显式释放内存
         blob.release();
         for(auto& out : outs) {
             out.release();
         }
         outs.clear();
+        
+        cout << "Frame processed successfully" << endl;
         
     } catch (const cv::Exception& e) {
         cerr << "Exception in processCameraFrame: " << e.what() << endl;
@@ -526,24 +541,25 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
     }
 }
 
-// Remove low confidence bounding boxes using non-maximum suppression
+// 修复的后处理函数
 void postprocess(cv::Mat& frame, const vector<cv::Mat>& outs)
 {
     vector<int> classIds;
     vector<float> confidences;
     vector<cv::Rect> boxes;
     
+    cout << "Network outputs size: " << outs.size() << endl;
+    
     for (size_t i = 0; i < outs.size(); ++i)
     {
-        // Scan through all bounding boxes output from the network and keep only the ones with high confidence scores
-        // Assign the box's class label as the class with the highest score
+        // 扫描网络输出的所有边界框，只保留置信度高的
         float* data = (float*)outs[i].data;
         for (int j = 0; j < outs[i].rows; ++j, data += outs[i].cols)
         {
             cv::Mat scores = outs[i].row(j).colRange(5, outs[i].cols);
             cv::Point classIdPoint;
             double confidence;
-            // Get the value and location of the maximum score
+            // 获取最高分值及其位置
             cv::minMaxLoc(scores, 0, &confidence, 0, &classIdPoint);
             if (confidence > confThreshold)
             {
@@ -561,45 +577,63 @@ void postprocess(cv::Mat& frame, const vector<cv::Mat>& outs)
         }
     }
     
-    // Perform non-maximum suppression to eliminate redundant overlapping boxes with lower confidences
+    // NMS之前的候选数量
+    cout << "Candidates before NMS: " << classIds.size() << endl;
+    
+    // 使用非极大值抑制去除低置信度的重叠边界框
     vector<int> indices;
+    
+    // 根据 OpenCV 4.9.0 版本的 NMSBoxes 使用方式
     cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
+    
+    cout << "Detections after NMS: " << indices.size() << endl;
+    
     for (size_t i = 0; i < indices.size(); ++i)
     {
         int idx = indices[i];
+        cout << "  Detected class " << classIds[idx] << " (";
+        if (classIds[idx] < classes.size()) {
+            cout << classes[classIds[idx]];
+        } else {
+            cout << "unknown";
+        }
+        cout << ") with confidence " << confidences[idx] << endl;
+        
         cv::Rect box = boxes[idx];
         drawPred(classIds[idx], confidences[idx], box.x, box.y,
                  box.x + box.width, box.y + box.height, frame);
     }
 }
 
-// Draw predicted bounding box
+// 修复的绘制预测函数 - 不再限制只显示 person 类
 void drawPred(int classId, float conf, int left, int top, int right, int bottom, cv::Mat& frame)
 {
-    // Only draw person class (classId 0)
-    if (classId == 0) {
-        // Draw a rectangle displaying the bounding box
-        cv::rectangle(frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
-        
-        // Get the label for the class name and its confidence
-        string label = cv::format("%.2f", conf);
-        if (!classes.empty())
-        {
-            CV_Assert(classId < (int)classes.size());
-            label = classes[classId] + ":" + label;
-        }
-        
-        // Display the label at the top of the bounding box
-        int baseLine;
-        cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-        top = max(top, labelSize.height);
-        cv::rectangle(frame, cv::Point(left, top - round(1.5*labelSize.height)),
-                  cv::Point(left + round(1.5*labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
-        cv::putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0,0,0), 1);
-        
-        // Log the detection
-        cout << "Person detected with confidence: " << conf << endl;
+    // 绘制边界框
+    cv::rectangle(frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 178, 50), 3);
+    
+    // 获取类名和置信度标签
+    string label = cv::format("%.2f", conf);
+    if (!classes.empty() && classId < (int)classes.size())
+    {
+        label = classes[classId] + ":" + label;
     }
+    
+    // 在边界框顶部显示标签
+    int baseLine;
+    cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+    top = max(top, labelSize.height);
+    cv::rectangle(frame, cv::Point(left, top - round(1.5*labelSize.height)),
+              cv::Point(left + round(1.5*labelSize.width), top + baseLine), cv::Scalar(255, 255, 255), cv::FILLED);
+    cv::putText(frame, label, cv::Point(left, top), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0,0,0), 1);
+    
+    // 输出检测日志
+    cout << "Drew detection: ";
+    if (classId < (int)classes.size()) {
+        cout << classes[classId];
+    } else {
+        cout << "unknown class " << classId;
+    }
+    cout << " with confidence: " << conf << endl;
 }
 
 // Get the names of the output layers
