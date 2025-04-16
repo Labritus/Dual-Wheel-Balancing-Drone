@@ -27,7 +27,7 @@ using namespace std::chrono_literals;
 atomic<bool> g_running{true};
 
 // Neural network parameters
-float confThreshold = 0.05; // 降低置信度阈值，提高检测率
+float confThreshold = 0.3; // 降低置信度阈值，提高检测率
 float nmsThreshold = 0.5;  // 提高NMS阈值，保留更多检测结果
 int inpWidth = 300;        // 恢复为300，与模型设计匹配
 int inpHeight = 300;       // 恢复为300，与模型设计匹配
@@ -521,7 +521,7 @@ void processCameraFrame(cv::Mat& frame, Net& net) {
         // 创建4D blob - 修改预处理参数
         cv::Mat blob;
         try {
-            blobFromImage(frame, blob, 0.007843, cv::Size(inpWidth, inpHeight), 
+            blobFromImage(frame, blob, 0.007843f, cv::Size(inpWidth, inpHeight), 
                           cv::Scalar(127.5, 127.5, 127.5), false, false);
             
             if (blob.empty()) {
