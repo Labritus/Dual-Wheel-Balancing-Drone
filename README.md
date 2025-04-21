@@ -24,13 +24,14 @@ This module is the underlying control core of the entire system, responsible for
 Specific features include:
 - **Two-wheel self-balancing control**: Use the MPU6050 attitude sensor to obtain the angular velocity and acceleration data of the vehicle body in real time, combine the complementary filtering algorithm to calculate the inclination angle, and adjust the left and right wheel speeds through the PID control algorithm to achieve self-balancing of the car when it is stationary or moving.
 - **Status display and user interaction**:
-- Use OLED screen to display current system status (such as mode, connection status, etc.)
-- Support users to switch between different working modes or perform manual calibration by pressing buttons
+  - Use OLED screen to display current system status (such as mode, connection status, etc.)
+  - Support users to switch between different working modes or perform manual calibration by pressing buttons
 - **Other features**:
-- Control LED indicators to indicate the current operating status (such as whether a person has been identified, whether the connection is successful, etc.)
-- Provides debugging interface (SWD) and Micro USB interface to facilitate program download and serial port output debugging information
+  - Control LED indicators to indicate the current operating status (such as whether a person has been identified, whether the connection is successful, etc.)
+  - Provides debugging interface (SWD) and Micro USB interface to facilitate program download and serial port output debugging information
 
 The module is written in C++, with a clear overall structure and easy maintenance.
+
 ### 2. Motor drive module
 
 This module focuses on controlling the rotation direction and speed of the left and right motors of the car, which directly affects the movement and posture adjustment of the vehicle.
@@ -48,8 +49,10 @@ Therefore, we adopted the architecture solution of **STM32 responsible for low-l
 ### 3. Video Transmission Module (Raspberry Pi)
 
 - Video capture using an external USB camera
+
 <p align="center"> <img src="./images/usb_camera.jpg" alt="USB External Camera" width="400"/> </p>
 <p align="center"><em>Figure 4: USB external camera for video capture and image recognition</em></p>
+
 - Real-time transmission of camera images to mobile phones or computers via web pages
 - Build a lightweight web server to access images and send control signals
 
