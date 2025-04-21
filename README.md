@@ -114,7 +114,7 @@ We have built a lightweight local web control interface on the Raspberry Pi, whi
 👉 A screenshot of the web interface is shown below :
 
 <div align="center">
-  <img src="./images/web.pgn" alt="Web Control Interface" width="600"/>
+  <img src="./images/web.png" alt="Web Control Interface" width="600"/>
 </div>
 <p align="center"><em>Figure 6: Screenshot of the web control interface</em></p>
 
