@@ -48,6 +48,8 @@ We chose to put the motor control on the STM32 instead of relying entirely on th
 
 Therefore, we adopted the architecture solution of **STM32 responsible for low-level control + Raspberry Pi responsible for image recognition and upper-level logic**, which not only reasonably utilized the performance advantages of each, but also facilitated division of labor and later debugging.
 
+📂 For more details, refer to `drone-movement-control` folder.
+
 ### 3. Video Transmission Module (Raspberry Pi)
 
 - Video capture using an external USB camera
@@ -62,7 +64,8 @@ Therefore, we adopted the architecture solution of **STM32 responsible for low-l
 
 - Use Raspberry Pi camera and libcamera tool for people detection
 - After detecting a person, a control signal is sent to STM32 via I2C
-- This module has its own documentation in the `PeopleDetection` folder
+
+📂 This module has its own documentation in the `PeopleDetection` folder
 
 ### 5. Web Interface
 
