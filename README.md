@@ -5,9 +5,9 @@ This project is a two-wheeled self-balancing surveillance car based on Raspberry
 
 The system supports web control, can transmit camera images to mobile phones or computers in real time, and has people detection function. The whole vehicle is composed of multiple modules, with a compact structure, equipped with a customized 3D printed shell, and a two-wheel balance structure to make the overall volume smaller. <strong>The overall shape is similar to a thermos cup, which can be easily picked up with one hand</strong>, suitable for daily movement or placement.
 
-To better illustrate the overall structure and compact design, here is the finished prototype of the robot:
+To better illustrate the overall structure and compact design, here is the finished prototype of the car:
 
-<div align="center"> <img src="./images/final_product.jpg" alt="Finished Robot" width="400"/> </div> <p align="center"><em>Figure: Final assembled robot with compact dual-wheel design and thermos-shaped body</em></p>
+<div align="center"> <img src="./images/final.jpg" alt="Finished Car" width="400"/> </div> <p align="center"><em>Figure 1: Final assembled car with compact dual-wheel design and thermos-shaped body</em></p>
 
 ## Features
 - **Real-time video transmission**: connect an external USB camera and view the image in real time on your phone or computer through the web page. Equipped with high-resolution cameras to ensure clear images and stable frame rates for real-time monitoring.
@@ -34,10 +34,12 @@ In order to achieve the goal of overall smallness and compact structure, we adop
   We used a vernier caliper to measure the size of the module, referred to the parameters on the official website, and performed parametric modeling in SolidWorks to facilitate size adjustment and symmetrical structure linkage. The overall shell is long and narrow, with functional modules arranged inside, with installation gaps reserved. The top is for the Raspberry Pi and STM32, and the camera is installed in the front. The material is PLA, 3D printed by FDM, and finally assembled and debugged.
 
 
-<div align="center"> <img src="./images/shell_model_render.jpg" alt="外壳建模图" width="350"/> <img src="./images/3d_case.jpg" alt="实物外壳图" width="350"/> </div> <p align="center"><em>左：外壳建模渲染图 | 右：打印后的实物组装图</em></p>
+<div align="center"> 
+  <img src="./images/shell_model_render.jpg" alt="rendering" width="350"/> 
+  <img src="./images/3d_case.jpg" alt="real" width="350"/> </div> 
+<p align="center"><em>Left: Rendering of the shell modeling | Right: Assembly diagram of the printed object</em></p>
 
-💬 注：若进入量产阶段，可进一步优化电路板布局，简化外壳设计，降低体积与成本。
-
+💬 Note: If entering the mass production stage, the circuit board layout can be further optimized, the shell design can be simplified, and the volume and cost can be reduced.
 
 ## Project Structure
 This project consists of multiple functional modules, and the modules collaborate through serial ports, I2C or web page communications. The main modules are as follows:
