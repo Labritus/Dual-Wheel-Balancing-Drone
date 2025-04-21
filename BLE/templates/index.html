@@ -47,9 +47,21 @@
   <h1>WHEELTEC Car Bluetooth Control</h1>
   <button id="scanButton">Scan for Cars</button>
   <button id="connectButton" style="display:none;">Connect to Selected</button>
+  <button id="disconnectButton" style="display:none;">Disconnect</button>
   <div id="status">Not Connected</div>
   
   <div id="scanResults"></div>
+  <div id="troubleshooting" style="margin-top:20px; color:#666; font-size:14px;">
+    <details>
+      <summary>Troubleshooting</summary>
+      <ul style="text-align:left;">
+        <li>Make sure Bluetooth is enabled on your Raspberry Pi</li>
+        <li>Make sure the WHEELTECH-IOS device is powered on and in range</li>
+        <li>If the device doesn't appear in scan results, try restarting the car</li>
+        <li>If connection fails, try restarting this application</li>
+      </ul>
+    </details>
+  </div>
 
   <div id="controls">
     <h2>Speed Control</h2>
@@ -67,6 +79,7 @@
     // DOM Elements
     const scanButton = document.getElementById('scanButton');
     const connectButton = document.getElementById('connectButton');
+    const disconnectButton = document.getElementById('disconnectButton');
     const statusEl = document.getElementById('status');
     const scanResultsEl = document.getElementById('scanResults');
     const controlsEl = document.getElementById('controls');
@@ -77,6 +90,7 @@
     let selectedDeviceAddress = null;
     let connected = false;
     let lastDir = 0x00;
+    let connectionCheckInterval = null;
     
     // Check if already connected on page load
     window.addEventListener('load', async () => {
@@ -146,6 +160,7 @@
       
       try {
         statusEl.innerText = `Connecting to ${selectedDeviceAddress}...`;
+        connectButton.disabled = true;
         
         const response = await fetch('/connect_bluetooth', {
           method: 'POST',
@@ -160,13 +175,53 @@
           statusEl.innerText = result.message;
           scanResultsEl.style.display = 'none';
           connectButton.style.display = 'none';
+          disconnectButton.style.display = 'inline-block';
           controlsEl.style.display = 'block';
+          
+          // Start periodic connection check
+          if (connectionCheckInterval) {
+            clearInterval(connectionCheckInterval);
+          }
+          connectionCheckInterval = setInterval(checkConnectionStatus, 5000);
         } else {
           statusEl.innerText = `Connection error: ${result.error}`;
+          connectButton.disabled = false;
         }
       } catch (error) {
         statusEl.innerText = `Connection failed: ${error.message}`;
         console.error('Connection error:', error);
+        connectButton.disabled = false;
+      }
+    });
+    
+    // Disconnect button
+    disconnectButton.addEventListener('click', async () => {
+      try {
+        statusEl.innerText = 'Disconnecting...';
+        
+        const response = await fetch('/disconnect_bluetooth', {
+          method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          connected = false;
+          statusEl.innerText = 'Disconnected';
+          disconnectButton.style.display = 'none';
+          scanButton.style.display = 'inline-block';
+          controlsEl.style.display = 'none';
+          
+          if (connectionCheckInterval) {
+            clearInterval(connectionCheckInterval);
+            connectionCheckInterval = null;
+          }
+        } else {
+          statusEl.innerText = `Disconnect error: ${result.error}`;
+        }
+      } catch (error) {
+        statusEl.innerText = `Disconnect failed: ${error.message}`;
+        console.error('Disconnect error:', error);
       }
     });
     
@@ -216,6 +271,13 @@
           connected = false;
           statusEl.innerText = 'Connection lost';
           controlsEl.style.display = 'none';
+          disconnectButton.style.display = 'none';
+          scanButton.style.display = 'inline-block';
+          
+          if (connectionCheckInterval) {
+            clearInterval(connectionCheckInterval);
+            connectionCheckInterval = null;
+          }
         }
       } catch (error) {
         console.error('Error checking connection:', error);
