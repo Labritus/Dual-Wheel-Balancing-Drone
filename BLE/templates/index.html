@@ -23,45 +23,13 @@
       transition: top 0.1s, left 0.1s;
       touch-action: none;
     }
-    #scanResults {
-      margin: 10px auto;
-      max-width: 500px;
-      text-align: left;
-      display: none;
-    }
-    .device-item {
-      padding: 10px;
-      margin: 5px 0;
-      background: #f9f9f9;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .device-item:hover {
-      background: #e9e9e9;
-    }
   </style>
 </head>
 <body>
 
   <h1>WHEELTEC Car Bluetooth Control</h1>
-  <button id="scanButton">Scan for Cars</button>
-  <button id="connectButton" style="display:none;">Connect to Selected</button>
-  <button id="disconnectButton" style="display:none;">Disconnect</button>
+  <button onclick="connect()">Connect Car</button>
   <div id="status">Not Connected</div>
-  
-  <div id="scanResults"></div>
-  <div id="troubleshooting" style="margin-top:20px; color:#666; font-size:14px;">
-    <details>
-      <summary>Troubleshooting</summary>
-      <ul style="text-align:left;">
-        <li>Make sure Bluetooth is enabled on your Raspberry Pi</li>
-        <li>Make sure the WHEELTECH-IOS device is powered on and in range</li>
-        <li>If the device doesn't appear in scan results, try restarting the car</li>
-        <li>If connection fails, try restarting this application</li>
-      </ul>
-    </details>
-  </div>
 
   <div id="controls">
     <h2>Speed Control</h2>
@@ -76,220 +44,49 @@
   </div>
 
   <script>
-    // DOM Elements
-    const scanButton = document.getElementById('scanButton');
-    const connectButton = document.getElementById('connectButton');
-    const disconnectButton = document.getElementById('disconnectButton');
-    const statusEl = document.getElementById('status');
-    const scanResultsEl = document.getElementById('scanResults');
-    const controlsEl = document.getElementById('controls');
-    const speedEl = document.getElementById('speed');
-    const speedValueEl = document.getElementById('speedValue');
-    
-    // State variables
-    let selectedDeviceAddress = null;
-    let connected = false;
-    let lastDir = 0x00;
-    let connectionCheckInterval = null;
-    
-    // Check if already connected on page load
-    window.addEventListener('load', async () => {
+    let device, server, service, writeCharacteristic, speedCharacteristic;
+    const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+    const CMD_CHAR    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+    async function connect() {
       try {
-        const response = await fetch('/bluetooth_status');
-        const status = await response.json();
-        if (status.connected) {
-          connected = true;
-          statusEl.innerText = `Connected to: ${status.device_address}`;
-          controlsEl.style.display = 'block';
-        }
-      } catch (error) {
-        console.error('Error checking connection status:', error);
-      }
-    });
-    
-    // Scan for Bluetooth devices
-    scanButton.addEventListener('click', async () => {
-      try {
-        statusEl.innerText = 'Scanning for devices...';
-        scanResultsEl.innerHTML = '';
-        scanResultsEl.style.display = 'block';
-        connectButton.style.display = 'none';
-        
-        const response = await fetch('/scan_bluetooth');
-        const result = await response.json();
-        
-        if (result.success) {
-          if (result.devices.length === 0) {
-            scanResultsEl.innerHTML = '<div>No devices found</div>';
-          } else {
-            statusEl.innerText = `Found ${result.devices.length} devices`;
-            
-            result.devices.forEach(device => {
-              const deviceName = device.name || 'Unknown Device';
-              const deviceEl = document.createElement('div');
-              deviceEl.className = 'device-item';
-              deviceEl.innerText = `${deviceName} (${device.address})`;
-              deviceEl.addEventListener('click', () => {
-                // Highlight selected device
-                document.querySelectorAll('.device-item').forEach(el => {
-                  el.style.background = '#f9f9f9';
-                });
-                deviceEl.style.background = '#d4edda';
-                
-                selectedDeviceAddress = device.address;
-                connectButton.style.display = 'inline-block';
-              });
-              scanResultsEl.appendChild(deviceEl);
-            });
-          }
-        } else {
-          statusEl.innerText = `Scan error: ${result.error}`;
-        }
-      } catch (error) {
-        statusEl.innerText = `Scan failed: ${error.message}`;
-        console.error('Scan error:', error);
-      }
-    });
-    
-    // Connect to selected device
-    connectButton.addEventListener('click', async () => {
-      if (!selectedDeviceAddress) {
-        statusEl.innerText = 'Please select a device first';
-        return;
-      }
-      
-      try {
-        statusEl.innerText = `Connecting to ${selectedDeviceAddress}...`;
-        connectButton.disabled = true;
-        
-        const response = await fetch('/connect_bluetooth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: selectedDeviceAddress })
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }]
         });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          connected = true;
-          statusEl.innerText = result.message;
-          scanResultsEl.style.display = 'none';
-          connectButton.style.display = 'none';
-          disconnectButton.style.display = 'inline-block';
-          controlsEl.style.display = 'block';
-          
-          // Start periodic connection check
-          if (connectionCheckInterval) {
-            clearInterval(connectionCheckInterval);
-          }
-          connectionCheckInterval = setInterval(checkConnectionStatus, 5000);
-        } else {
-          statusEl.innerText = `Connection error: ${result.error}`;
-          connectButton.disabled = false;
-        }
-      } catch (error) {
-        statusEl.innerText = `Connection failed: ${error.message}`;
-        console.error('Connection error:', error);
-        connectButton.disabled = false;
-      }
-    });
-    
-    // Disconnect button
-    disconnectButton.addEventListener('click', async () => {
-      try {
-        statusEl.innerText = 'Disconnecting...';
-        
-        const response = await fetch('/disconnect_bluetooth', {
-          method: 'POST'
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          connected = false;
-          statusEl.innerText = 'Disconnected';
-          disconnectButton.style.display = 'none';
-          scanButton.style.display = 'inline-block';
-          controlsEl.style.display = 'none';
-          
-          if (connectionCheckInterval) {
-            clearInterval(connectionCheckInterval);
-            connectionCheckInterval = null;
-          }
-        } else {
-          statusEl.innerText = `Disconnect error: ${result.error}`;
-        }
-      } catch (error) {
-        statusEl.innerText = `Disconnect failed: ${error.message}`;
-        console.error('Disconnect error:', error);
-      }
-    });
-    
-    // Set speed
-    async function setSpeed() {
-      if (!connected) return;
-      
-      const speed = parseInt(speedEl.value);
-      speedValueEl.innerText = speed;
-      
-      try {
-        await fetch('/set_speed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ speed: speed })
-        });
-      } catch (error) {
-        console.error('Error setting speed:', error);
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(SERVICE_UUID);
+        writeCharacteristic = await service.getCharacteristic(CMD_CHAR);
+        // optional speed char
+        try {
+          speedCharacteristic = await service.getCharacteristic('0000ffe2-0000-1000-8000-00805f9b34fb');
+        } catch {}
+        document.getElementById("status").innerText = "Connected";
+        document.getElementById("controls").style.display = "block";
+      } catch (e) {
+        alert("Connection failed: " + e);
       }
     }
-    
-    // Send command
+
     async function sendCommand(code) {
-      if (!connected) return;
-      
-      try {
-        await fetch('/send_command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: code })
-        });
-      } catch (error) {
-        console.error('Error sending command:', error);
-        // Check if we're still connected if command failed
-        checkConnectionStatus();
+      if (!writeCharacteristic) return;
+      await writeCharacteristic.writeValue(Uint8Array.of(code));
+    }
+
+    function setSpeed() {
+      const v = parseInt(document.getElementById("speed").value);
+      document.getElementById("speedValue").innerText = v;
+      if (speedCharacteristic) {
+        speedCharacteristic.writeValue(Uint8Array.of(v));
       }
     }
-    
-    // Check connection status
-    async function checkConnectionStatus() {
-      try {
-        const response = await fetch('/bluetooth_status');
-        const status = await response.json();
-        
-        if (connected && !status.connected) {
-          // Connection was lost
-          connected = false;
-          statusEl.innerText = 'Connection lost';
-          controlsEl.style.display = 'none';
-          disconnectButton.style.display = 'none';
-          scanButton.style.display = 'inline-block';
-          
-          if (connectionCheckInterval) {
-            clearInterval(connectionCheckInterval);
-            connectionCheckInterval = null;
-          }
-        }
-      } catch (error) {
-        console.error('Error checking connection:', error);
-      }
-    }
-    
+
     // --- Joystick logic ---
     const thumb = document.getElementById('thumb');
     const container = document.getElementById('joystickContainer');
     const maxDist = 75; // px
     let active = false;
-    
+    let lastDir = 0x00;
+
     function getDirectionCode(x, y) {
       const angle = Math.atan2(-y, x) * 180 / Math.PI; // -y so up is positive
       const mag = Math.hypot(x, y);
