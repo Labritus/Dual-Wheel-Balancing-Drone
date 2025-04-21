@@ -1,4 +1,4 @@
-# Dual-Wheel-Balancing-Drone
+# Dual-Wheel Patrol Car
 
 ## Introduction
 This project is a two-wheeled self-balancing surveillance car based on Raspberry Pi and STM32, which refers to the design concept of the reconnaissance drone in the game "Rainbow Six Siege". We hope to realize a device that can move in complex environments and transmit images in real time, combining monitoring, pet interaction and entertainment functions.
@@ -113,10 +113,23 @@ We have built a lightweight local web control interface on the Raspberry Pi, whi
 
 👉 A screenshot of the web interface is shown below :
 
-【figure】
+<div align="center">
+  <img src="./images/web.pgn" alt="Web Control Interface" width="600"/>
+</div>
+<p align="center"><em>Figure 6: Screenshot of the web control interface</em></p>
 
-## Demo
-...
+## 📽️ Demo Introduction
+
+The demonstration video consists of four main parts:  
+1. **Self-balancing** – The car automatically maintains balance even under external force disturbances.  
+2. **Remote control** – Users can control movement (forward, backward, turning) in real time through the web interface.  
+3. **Person following** – The car detects and follows a person ahead.  
+4. **Person detection** – The camera identifies and marks people in the field of view.
+
+👉 Watch the demo video here:
+
+[![Demo Video](./images/demo_cover.jpg)](https://www.instagram.com/realtime_project)
+
 
 ## Follow Us
 <p align="center" ><em>
