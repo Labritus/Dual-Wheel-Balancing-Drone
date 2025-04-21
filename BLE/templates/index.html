@@ -2,344 +2,156 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WHEELTEC BLE Control with Video Stream</title>
+  <title>People Detection Stream</title>
   <style>
     body { 
       font-family: Arial, sans-serif; 
       text-align: center; 
       padding: 20px; 
-      background-color: #f5f5f5;
+      background-color: #f0f0f0;
     }
-    button { 
-      margin: 10px; 
-      padding: 15px 30px; 
-      font-size: 18px; 
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { 
+      color: #333; 
+      margin-bottom: 20px;
+    }
+    .video-container {
+      margin: 20px auto;
+      width: 100%;
+      max-width: 640px;
+      height: auto;
+      position: relative;
+    }
+    #videoStream {
+      width: 100%;
+      height: auto;
+      border: 3px solid #ddd;
+      border-radius: 5px;
+    }
+    .status {
+      margin: 15px 0;
+      padding: 10px;
+      background-color: #e7f4e4;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+    .controls {
+      margin-top: 20px;
+    }
+    button {
       background-color: #4CAF50;
-      color: white;
       border: none;
-      border-radius: 4px;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
       cursor: pointer;
+      border-radius: 4px;
+      transition: background-color 0.3s;
     }
     button:hover {
       background-color: #45a049;
     }
-    #controls { 
-      margin-top: 20px; 
-      display: none; 
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
     }
-    input[type=range] { 
-      width: 300px; 
-    }
-    #joystickContainer {
-      margin: 20px auto;
-      position: relative;
-      width: 200px; height: 200px;
-      background: #f0f0f0; border-radius: 50%;
-      touch-action: none;
-      border: 2px solid #ccc;
-    }
-    #thumb {
-      position: absolute;
-      width: 50px; height: 50px;
-      background: #888; border-radius: 50%;
-      top: 75px; left: 75px;
-      transition: top 0.1s, left 0.1s;
-      touch-action: none;
-    }
-    .container {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: flex-start;
-    }
-    .panel {
-      margin: 10px;
-      padding: 15px;
-      background-color: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    #videoFeed {
-      margin: 0 auto;
-      max-width: 100%;
-      height: auto;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-    }
-    #connectStatus {
+    .detection-info {
+      margin-top: 15px;
+      text-align: left;
       padding: 10px;
-      margin-top: 10px;
-      border-radius: 4px;
-      font-weight: bold;
-    }
-    .connected {
-      background-color: #dff0d8;
-      color: #3c763d;
-    }
-    .disconnected {
-      background-color: #f2dede;
-      color: #a94442;
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
-
-  <h1>WHEELTEC Car Control with People Detection</h1>
-  
   <div class="container">
-    <!-- Video Panel -->
-    <div class="panel" style="flex: 2; min-width: 320px;">
-      <h2>People Detection Video Feed</h2>
-      <div id="videoContainer">
-        <img id="videoFeed" src="/video" alt="Video stream unavailable" width="640" height="480">
-      </div>
-      <div id="streamStatus"></div>
+    <h1>People Detection Live Stream</h1>
+    
+    <div class="status" id="status">
+      Stream Status: Disconnected
     </div>
     
-    <!-- Control Panel -->
-    <div class="panel" style="flex: 1; min-width: 300px;">
-      <h2>Car Control</h2>
-      <button id="connectBtn" onclick="connect()">Connect Car</button>
-      <div id="connectStatus" class="disconnected">Not Connected</div>
-      
-      <div id="controls">
-        <h3>Speed Control</h3>
-        <input type="range" id="speed" min="0" max="100" value="50" onchange="setSpeed()"/>
-        <div>Current Speed: <span id="speedValue">50</span></div>
-
-        <h3>Joystick Control</h3>
-        <div id="joystickContainer">
-          <div id="thumb"></div>
-        </div>
-        <div>Drag to move, release to stop</div>
-      </div>
+    <div class="video-container">
+      <img id="videoStream" src="" alt="Video stream not available">
+    </div>
+    
+    <div class="controls">
+      <button id="startBtn" onclick="startStream()">Start Stream</button>
+      <button id="stopBtn" onclick="stopStream()" disabled>Stop Stream</button>
+    </div>
+    
+    <div class="detection-info">
+      <h3>Detection Information:</h3>
+      <p>This stream uses both DNN-based detection and HOG person detection to identify people in the video.</p>
+      <p>Detection confidence threshold: 0.3</p>
+      <div id="detectionStats">No detection statistics available</div>
     </div>
   </div>
 
   <script>
-    // BLE Control Variables
-    let device, server, service, writeCharacteristic, speedCharacteristic;
-    const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
-    const CMD_CHAR    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+    let streaming = false;
+    const videoElement = document.getElementById('videoStream');
+    const statusElement = document.getElementById('status');
+    const startButton = document.getElementById('startBtn');
+    const stopButton = document.getElementById('stopBtn');
     
-    // Video Stream Variables
-    let videoFeed = document.getElementById('videoFeed');
-    let streamStatus = document.getElementById('streamStatus');
-    let streamConnected = false;
-    
-    // Get the Raspberry Pi's IP address (or hostname)
-    function getRaspberryPiHost() {
-      // Try to get the IP from the current connection
-      // This assumes the page is being served from the Raspberry Pi
-      const currentHost = window.location.hostname;
-      return currentHost || 'raspberrypi.local'; // Fallback to mDNS name
-    }
-    
-    // Connect to the video stream
-    function connectToVideoStream() {
-      const host = getRaspberryPiHost();
-      const port = 8080; // Match the port from the C++ code
-      
-      // Update video source to point to the stream
-      videoFeed.src = `http://${host}:${port}/video`;
-      
-      // Add event listeners to monitor connection
-      videoFeed.onload = function() {
-        streamStatus.textContent = "Stream connected";
-        streamStatus.className = "connected";
-        streamConnected = true;
-      };
-      
-      videoFeed.onerror = function() {
-        streamStatus.textContent = "Stream connection failed. Retrying...";
-        streamStatus.className = "disconnected";
-        streamConnected = false;
+    function startStream() {
+      if (!streaming) {
+        // Set the image source to our stream endpoint
+        videoElement.src = '/stream';
+        videoElement.onerror = function() {
+          statusElement.textContent = 'Stream Status: Error connecting to the stream';
+          statusElement.style.backgroundColor = '#ffdddd';
+          stopStream();
+        };
         
-        // Try to reconnect after a delay
-        setTimeout(connectToVideoStream, 5000);
-      };
+        videoElement.onload = function() {
+          statusElement.textContent = 'Stream Status: Connected';
+          statusElement.style.backgroundColor = '#d4edda';
+          streaming = true;
+          startButton.disabled = true;
+          stopButton.disabled = false;
+        };
+      }
     }
     
-    // Initialize video stream on page load
-    window.addEventListener('load', function() {
-      connectToVideoStream();
-      
-      // Check stream connection periodically
-      setInterval(function() {
-        if (!streamConnected) {
-          connectToVideoStream();
-        }
-      }, 10000); // Try to reconnect every 10 seconds if needed
+    function stopStream() {
+      if (streaming) {
+        videoElement.src = '';
+        statusElement.textContent = 'Stream Status: Disconnected';
+        statusElement.style.backgroundColor = '#e7f4e4';
+        streaming = false;
+        startButton.disabled = false;
+        stopButton.disabled = true;
+      }
+    }
+    
+    // Auto-reconnect if the stream fails
+    videoElement.addEventListener('error', function() {
+      if (streaming) {
+        statusElement.textContent = 'Stream Status: Connection lost. Attempting to reconnect...';
+        statusElement.style.backgroundColor = '#fff3cd';
+        setTimeout(startStream, 3000);
+      }
     });
 
-    // BLE Connection
-    async function connect() {
-      try {
-        device = await navigator.bluetooth.requestDevice({
-          filters: [{ services: [SERVICE_UUID] }]
-        });
-        
-        const connectBtn = document.getElementById('connectBtn');
-        const connectStatus = document.getElementById('connectStatus');
-        
-        // Update button and status during connection
-        connectBtn.disabled = true;
-        connectBtn.textContent = "Connecting...";
-        connectStatus.textContent = "Connecting...";
-        connectStatus.className = "";
-        
-        server = await device.gatt.connect();
-        service = await server.getPrimaryService(SERVICE_UUID);
-        writeCharacteristic = await service.getCharacteristic(CMD_CHAR);
-        
-        // optional speed char
-        try {
-          speedCharacteristic = await service.getCharacteristic('0000ffe2-0000-1000-8000-00805f9b34fb');
-        } catch(e) {
-          console.log("Speed characteristic not available:", e);
-        }
-        
-        // Update UI
-        connectStatus.textContent = "Connected";
-        connectStatus.className = "connected";
-        connectBtn.textContent = "Disconnect";
-        connectBtn.onclick = disconnect;
-        document.getElementById("controls").style.display = "block";
-        
-        // Add disconnect event listener
-        device.addEventListener('gattserverdisconnected', onDisconnected);
-        
-      } catch (e) {
-        console.error("Connection failed:", e);
-        alert("Connection failed: " + e);
-        
-        const connectStatus = document.getElementById('connectStatus');
-        connectStatus.textContent = "Connection failed";
-        connectStatus.className = "disconnected";
-      }
-    }
-    
-    // Handle disconnection
-    function disconnect() {
-      if (device && device.gatt.connected) {
-        device.gatt.disconnect();
-      } else {
-        onDisconnected();
-      }
-    }
-    
-    function onDisconnected() {
-      const connectBtn = document.getElementById('connectBtn');
-      const connectStatus = document.getElementById('connectStatus');
-      
-      connectStatus.textContent = "Disconnected";
-      connectStatus.className = "disconnected";
-      connectBtn.textContent = "Connect Car";
-      connectBtn.disabled = false;
-      connectBtn.onclick = connect;
-      document.getElementById("controls").style.display = "none";
-      
-      device = null;
-      server = null;
-      service = null;
-      writeCharacteristic = null;
-      speedCharacteristic = null;
-    }
-
-    async function sendCommand(code) {
-      if (!writeCharacteristic) return;
-      try {
-        await writeCharacteristic.writeValue(Uint8Array.of(code));
-      } catch(e) {
-        console.error("Error sending command:", e);
-        // If we get an error, try to reconnect
-        onDisconnected();
-      }
-    }
-
-    function setSpeed() {
-      const v = parseInt(document.getElementById("speed").value);
-      document.getElementById("speedValue").innerText = v;
-      if (speedCharacteristic) {
-        try {
-          speedCharacteristic.writeValue(Uint8Array.of(v));
-        } catch(e) {
-          console.error("Error setting speed:", e);
-          onDisconnected();
-        }
-      }
-    }
-
-    // --- Joystick logic ---
-    const thumb = document.getElementById('thumb');
-    const container = document.getElementById('joystickContainer');
-    const maxDist = 75; // px
-    let active = false;
-    let lastDir = 0x00;
-
-    function getDirectionCode(x, y) {
-      const angle = Math.atan2(-y, x) * 180 / Math.PI; // -y so up is positive
-      const mag = Math.hypot(x, y);
-      if (mag < 20) return 0x00; // deadzone = stop
-
-      // map angle to one of 8
-      if (angle >= 67.5 && angle < 112.5) return 0x41; // forward
-      if (angle >= 22.5 && angle < 67.5) return 0x42;  // forward-right
-      if (angle >= -22.5 && angle < 22.5) return 0x43; // right
-      if (angle >= -67.5 && angle < -22.5) return 0x44; // backward-right
-      if (angle >= -112.5 && angle < -67.5) return 0x45; // backward
-      if (angle >= -157.5 && angle < -112.5) return 0x46;// backward-left
-      if (angle >= 112.5 || angle < -157.5) return 0x47; // left
-      if (angle >= 67.5 && angle < 112.5) return 0x48;   // forward-left
-      return 0x00;
-    }
-
-    function pointerDown(evt) {
-      active = true;
-      moveThumb(evt);
-      container.setPointerCapture(evt.pointerId);
-    }
-
-    function pointerMove(evt) {
-      if (!active) return;
-      moveThumb(evt);
-    }
-
-    function pointerUp(evt) {
-      active = false;
-      thumb.style.top = '75px';
-      thumb.style.left = '75px';
-      if (lastDir !== 0x00) {
-        sendCommand(0x00);
-        lastDir = 0x00;
-      }
-      container.releasePointerCapture(evt.pointerId);
-    }
-
-    function moveThumb(evt) {
-      const rect = container.getBoundingClientRect();
-      const x = evt.clientX - rect.left - rect.width/2;
-      const y = evt.clientY - rect.top - rect.height/2;
-      const dist = Math.min(maxDist, Math.hypot(x,y));
-      const angle = Math.atan2(y, x);
-      const nx = dist * Math.cos(angle);
-      const ny = dist * Math.sin(angle);
-      thumb.style.left = `${100 + nx - 25}px`;
-      thumb.style.top  = `${100 + ny - 25}px`;
-
-      const dir = getDirectionCode(nx, ny);
-      if (dir !== lastDir) {
-        sendCommand(dir);
-        lastDir = dir;
-      }
-    }
-
-    container.addEventListener('pointerdown', pointerDown);
-    container.addEventListener('pointermove', pointerMove);
-    container.addEventListener('pointerup',   pointerUp);
-    container.addEventListener('pointerleave', pointerUp);
+    // Start the stream automatically when the page loads
+    window.onload = function() {
+      setTimeout(startStream, 1000);
+    };
   </script>
-
 </body>
 </html>
