@@ -33,11 +33,10 @@ In order to achieve the goal of overall smallness and compact structure, we adop
 
   We used a vernier caliper to measure the size of the module, referred to the parameters on the official website, and performed parametric modeling in SolidWorks to facilitate size adjustment and symmetrical structure linkage. The overall shell is long and narrow, with functional modules arranged inside, with installation gaps reserved. The top is for the Raspberry Pi and STM32, and the camera is installed in the front. The material is PLA, 3D printed by FDM, and finally assembled and debugged.
 
-
 <div align="center"> 
-  <img src="./images/shell_model_render.jpg" alt="rendering" width="350"/> 
+  <img src="./Drone Frame/frame.png" alt="frame" width="350"/> 
   <img src="./images/3d_case.jpg" alt="real" width="350"/> </div> 
-<p align="center"><em>Left: Rendering of the shell modeling | Right: Assembly diagram of the printed object</em></p>
+<p align="center"><em>Figure 2: Left: Rendering of the shell modeling | Right: Assembly diagram of the printed object</em></p>
 
 💬 Note: If entering the mass production stage, the circuit board layout can be further optimized, the shell design can be simplified, and the volume and cost can be reduced.
 
@@ -48,7 +47,7 @@ This project consists of multiple functional modules, and the modules collaborat
 This module is the underlying control core of the entire system, responsible for posture perception, self-balancing, OLED display, button response, and other functions.
 
 <p align="center"> <img src="./images/stm32_board.jpg" alt="STM32 Control Board" width="400"/> </p> 
-<p align="center"><em>Figure 2: STM32 control board, connected to OLED display, buttons, Bluetooth module</em></p>
+<p align="center"><em>Figure 3: STM32 control board, connected to OLED display, buttons, Bluetooth module</em></p>
 
 Specific features include:
 - **Two-wheel self-balancing control**:
@@ -71,7 +70,7 @@ The module is written in C++, with a clear overall structure and easy maintenanc
 This module focuses on controlling the rotation direction and speed of the left and right motors of the car, which directly affects the movement and posture adjustment of the vehicle.
 
 <p align="center"> <img src="./images/raspberry_pi.jpg" alt="Raspberry Pi Module" width="400"/>
-</p> <p align="center"><em>Figure 3: Raspberry Pi module</em></p>
+</p> <p align="center"><em>Figure 4: Raspberry Pi module</em></p>
 
 We chose to put the motor control on the STM32 instead of relying entirely on the Raspberry Pi for the following reasons:
 
@@ -88,7 +87,7 @@ Therefore, we adopted the architecture solution of **STM32 responsible for low-l
 - Video capture using an external USB camera
 
 <p align="center"> <img src="./images/usb_camera.jpg" alt="USB External Camera" width="400"/> </p>
-<p align="center"><em>Figure 4: USB external camera for video capture and image recognition</em></p>
+<p align="center"><em>Figure 5: USB external camera for video capture and image recognition</em></p>
 
 - Real-time transmission of camera images to mobile phones or computers via web pages
 - Build a lightweight web server to access images and send control signals
