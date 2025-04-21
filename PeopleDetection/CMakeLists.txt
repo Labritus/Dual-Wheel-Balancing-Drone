@@ -29,6 +29,7 @@ include_directories(${LIBCAMERA_INCLUDE_DIRS})
 add_executable(peopleDetection peopleDetection.cpp)
 add_executable(camtest Camtest.cpp)
 add_executable(peopleDetectionTest peopleDetectionTest.cpp)
+add_executable(peopleDetectionWebSocket peopleDetectionWebSocket.cpp)
 
 # Link libraries with correct names
 target_link_libraries(peopleDetection 
@@ -52,6 +53,13 @@ target_link_libraries(peopleDetectionTest
     camera-base
 )
 
+target_link_libraries(peopleDetectionWebSocket 
+    ${OpenCV_LIBS}
+    ${LIBCAMERA_LIBRARIES}
+    camera
+    camera-base
+)
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,4 +70,21 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
     target_link_libraries(peopleDetection Threads::Threads)
     target_link_libraries(camtest Threads::Threads)
     target_link_libraries(peopleDetectionTest Threads::Threads)
+    target_link_libraries(peopleDetectionWebSocket Threads::Threads)
 endif()
+
+# Install targets
+install(TARGETS peopleDetection camtest peopleDetectionTest peopleDetectionWebSocket
+    RUNTIME DESTINATION bin
+)
+
+# Install web interface files
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/web/index.html
+    DESTINATION share/peopledetection/web
+)
+
+# Install Python WebSocket server
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/scripts/detection_server.py
+    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+    DESTINATION bin
+)
