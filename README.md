@@ -49,7 +49,7 @@ Therefore, we adopted the architecture solution of **STM32 responsible for low-l
 
 - Video capture using an external USB camera
 <p align="center"> <img src="./images/usb_camera.jpg" alt="USB External Camera" width="400"/> </p>
-<p align="center"><em>Figure 4: USB external camera for video capture and image recognition.</em></p>
+<p align="center"><em>Figure 4: USB external camera for video capture and image recognition</em></p>
 - Real-time transmission of camera images to mobile phones or computers via web pages
 - Build a lightweight web server to access images and send control signals
 
