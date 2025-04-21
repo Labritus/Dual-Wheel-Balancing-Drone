@@ -126,9 +126,7 @@ The demonstration video consists of four main parts:
 3. **Person following** – The car detects and follows a person ahead.  
 4. **Person detection** – The camera identifies and marks people in the field of view.
 
-👉 Watch the demo video here:
-
-[![Demo Video](./images/demo_cover.jpg)](https://www.instagram.com/realtime_project)
+👉 [Click here to watch the demo video on Instagram](https://www.instagram.com/reel/DIueotng6fj/?igsh=M293bG9rcjM4enZz)
 
 
 ## Follow Us
