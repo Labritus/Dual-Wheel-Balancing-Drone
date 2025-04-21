@@ -343,3 +343,335 @@ private:
             
             // Explicitly release memory
             frame.release();
+            
+        } catch (const std::exception& e) {
+            cerr << "Exception in requestComplete: " << e.what() << endl;
+        } catch (...) {
+            cerr << "Unknown exception in requestComplete" << endl;
+        }
+        
+    requeue:
+        // Re-queue the request to the camera
+        libcamera::Stream *stream = mConfig->at(0).stream();
+        const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
+        
+        size_t index = request->cookie();
+        libcamera::FrameBuffer *buffer = buffers[index].get();
+        
+        request->reuse();
+        request->addBuffer(stream, buffer);
+        mCamera->queueRequest(request);
+    }
+    
+public:
+    PeopleDetector() : hog(cv::HOGDescriptor::getDefaultPeopleDetector()), mAllocator(nullptr) {
+        // Initialize HOG detector with default people detector
+        hog.setSVMDetector(cv::HOGDescriptor::getDefaultPeopleDetector());
+    }
+    
+    ~PeopleDetector() {
+        // Clean up resources
+        if (mCamera) {
+            mCamera->stop();
+            mCamera->release();
+        }
+        
+        if (mAllocator) {
+            delete mAllocator;
+        }
+        
+        if (mCameraManager) {
+            mCameraManager->stop();
+        }
+    }
+    
+    bool initialize() {
+        try {
+            // Set up camera
+            if (!setupCamera()) {
+                cerr << "Failed to set up camera" << endl;
+                return false;
+            }
+            
+            // Load neural network
+            string modelPath = getModelPath("MobileNetSSD_deploy.caffemodel");
+            string configPath = getModelPath("MobileNetSSD_deploy.prototxt");
+            
+            try {
+                mNet = cv::dnn::readNetFromCaffe(configPath, modelPath);
+                
+                if (mNet.empty()) {
+                    cerr << "Failed to load model" << endl;
+                    // Continue with HOG detector only
+                } else {
+                    cout << "Neural network model loaded successfully" << endl;
+                    
+                    // Load class names
+                    string classesFile = getModelPath("coco.names");
+                    ifstream ifs(classesFile.c_str());
+                    string line;
+                    while (getline(ifs, line)) {
+                        classes.push_back(line);
+                    }
+                }
+            } catch (const cv::Exception& e) {
+                cerr << "Exception loading neural network: " << e.what() << endl;
+                // Continue with HOG detector only
+            }
+            
+            return true;
+        } catch (const std::exception& e) {
+            cerr << "Exception in initialize: " << e.what() << endl;
+            return false;
+        } catch (...) {
+            cerr << "Unknown exception in initialize" << endl;
+            return false;
+        }
+    }
+    
+    bool start() {
+        try {
+            // Set up request completion handler
+            mCamera->requestCompleted.connect(this, &PeopleDetector::requestComplete);
+            
+            // Create and queue requests
+            libcamera::Stream *stream = mConfig->at(0).stream();
+            const std::vector<std::unique_ptr<FrameBuffer>> &buffers = mAllocator->buffers(stream);
+            
+            for (size_t i = 0; i < buffers.size(); i++) {
+                std::unique_ptr<libcamera::Request> request = mCamera->createRequest();
+                if (!request) {
+                    cerr << "Failed to create request" << endl;
+                    return false;
+                }
+                
+                // Set cookie for tracking which buffer this request is using
+                request->setCookie(i);
+                
+                // Map buffers for CPU access
+                const libcamera::FrameBuffer *buffer = buffers[i].get();
+                const std::vector<libcamera::FrameBuffer::Plane> &planes = buffer->planes();
+                
+                for (const auto &plane : planes) {
+                    void *memory = mmap(nullptr, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), 0);
+                    if (memory == MAP_FAILED) {
+                        cerr << "Failed to map buffer memory" << endl;
+                        return false;
+                    }
+                    
+                    mMappedBuffers[buffers[i].get()] = static_cast<uint8_t*>(memory);
+                }
+                
+                // Add buffer to request
+                if (request->addBuffer(stream, buffer) < 0) {
+                    cerr << "Failed to add buffer to request" << endl;
+                    return false;
+                }
+                
+                mRequests.push_back(std::move(request));
+            }
+            
+            // Start the camera
+            if (mCamera->start()) {
+                cerr << "Failed to start camera" << endl;
+                return false;
+            }
+            
+            // Queue requests
+            for (auto &request : mRequests) {
+                if (mCamera->queueRequest(request.get()) < 0) {
+                    cerr << "Failed to queue request" << endl;
+                    return false;
+                }
+            }
+            
+            cout << "Camera started successfully" << endl;
+            return true;
+        } catch (const std::exception& e) {
+            cerr << "Exception in start: " << e.what() << endl;
+            return false;
+        } catch (...) {
+            cerr << "Unknown exception in start" << endl;
+            return false;
+        }
+    }
+    
+    void stop() {
+        try {
+            if (mCamera) {
+                mCamera->stop();
+            }
+            
+            // Unmap buffers
+            for (auto &pair : mMappedBuffers) {
+                libcamera::FrameBuffer *buffer = pair.first;
+                uint8_t *memory = pair.second;
+                
+                const std::vector<libcamera::FrameBuffer::Plane> &planes = buffer->planes();
+                for (const auto &plane : planes) {
+                    munmap(memory, plane.length);
+                }
+            }
+            
+            mMappedBuffers.clear();
+            mRequests.clear();
+            
+            cout << "Camera stopped" << endl;
+        } catch (const std::exception& e) {
+            cerr << "Exception in stop: " << e.what() << endl;
+        } catch (...) {
+            cerr << "Unknown exception in stop" << endl;
+        }
+    }
+};
+
+// Process the camera frame with neural network
+void processCameraFrame(cv::Mat& frame, Net& net, int& peopleCount) {
+    try {
+        if (net.empty()) {
+            // Skip neural network processing if model wasn't loaded
+            return;
+        }
+        
+        if (frame.empty()) {
+            cerr << "Empty frame passed to processCameraFrame" << endl;
+            return;
+        }
+        
+        // Create a 4D blob from the frame
+        Mat blob;
+        blobFromImage(frame, blob, 0.007843, Size(inpWidth, inpHeight), Scalar(127.5, 127.5, 127.5), false);
+        
+        // Set the input to the network
+        net.setInput(blob);
+        
+        // Forward pass to get output
+        Mat detection = net.forward();
+        
+        Mat detectionMat(detection.size[2], detection.size[3], CV_32F, detection.ptr<float>());
+        
+        for (int i = 0; i < detectionMat.rows; i++) {
+            float confidence = detectionMat.at<float>(i, 2);
+            
+            if (confidence > confThreshold) {
+                int classId = static_cast<int>(detectionMat.at<float>(i, 1));
+                
+                // Filter for person class (class ID 15 in SSD MobileNet)
+                if (classId == 15) {
+                    int left = static_cast<int>(detectionMat.at<float>(i, 3) * frame.cols);
+                    int top = static_cast<int>(detectionMat.at<float>(i, 4) * frame.rows);
+                    int right = static_cast<int>(detectionMat.at<float>(i, 5) * frame.cols);
+                    int bottom = static_cast<int>(detectionMat.at<float>(i, 6) * frame.rows);
+                    
+                    // Draw the bounding box
+                    rectangle(frame, Point(left, top), Point(right, bottom), Scalar(0, 0, 255), 2);
+                    
+                    // Display the label and confidence
+                    string label = format("Person: %.2f", confidence);
+                    int baseLine;
+                    Size labelSize = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+                    top = max(top, labelSize.height);
+                    putText(frame, label, Point(left, top - 5), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 255), 1);
+                    
+                    // Increment people counter
+                    peopleCount++;
+                }
+            }
+        }
+        
+        // Display the people count on the frame
+        putText(frame, "People: " + to_string(peopleCount), Point(10, 30), 
+              FONT_HERSHEY_SIMPLEX, 0.7, Scalar(0, 0, 255), 2);
+              
+        blob.release();
+        detection.release();
+    } catch (const cv::Exception& e) {
+        cerr << "Exception in processCameraFrame: " << e.what() << endl;
+    } catch (const std::exception& e) {
+        cerr << "Exception in processCameraFrame: " << e.what() << endl;
+    } catch (...) {
+        cerr << "Unknown exception in processCameraFrame" << endl;
+    }
+}
+
+void signalHandler(int signum) {
+    cout << "Signal " << signum << " received. Terminating..." << endl;
+    g_running = false;
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        // Register signal handler
+        signal(SIGINT, signalHandler);
+        signal(SIGTERM, signalHandler);
+        
+        // Create named pipe for communication with WebSocket server
+        if (access(PIPE_PATH, F_OK) == -1) {
+            if (mkfifo(PIPE_PATH, 0666) != 0) {
+                cerr << "Failed to create named pipe: " << strerror(errno) << endl;
+                return 1;
+            }
+        }
+        
+        // Open the pipe in non-blocking mode
+        pipe_fd = open(PIPE_PATH, O_WRONLY | O_NONBLOCK);
+        if (pipe_fd == -1) {
+            cerr << "Failed to open pipe for writing: " << strerror(errno) << endl;
+            cerr << "Make sure the WebSocket server is running and listening to the pipe" << endl;
+            return 1;
+        }
+        
+        cout << "Connected to named pipe " << PIPE_PATH << endl;
+        
+        // Initialize people detector
+        PeopleDetector detector;
+        if (!detector.initialize()) {
+            cerr << "Failed to initialize people detector" << endl;
+            return 1;
+        }
+        
+        if (!detector.start()) {
+            cerr << "Failed to start camera" << endl;
+            return 1;
+        }
+        
+        cout << "People detection started. Press Ctrl+C to exit." << endl;
+        
+        // Main loop
+        while (g_running) {
+            // Just sleep and let the camera callbacks do the work
+            std::this_thread::sleep_for(100ms);
+            
+            // Check if pipe is still valid
+            if (pipe_fd == -1) {
+                // Try to reopen the pipe
+                pipe_fd = open(PIPE_PATH, O_WRONLY | O_NONBLOCK);
+                if (pipe_fd != -1) {
+                    cout << "Reconnected to named pipe" << endl;
+                }
+            }
+        }
+        
+        cout << "Shutting down..." << endl;
+        
+        // Clean up
+        detector.stop();
+        
+        if (pipe_fd != -1) {
+            close(pipe_fd);
+        }
+        
+        cv::destroyAllWindows();
+        
+        return 0;
+    } catch (const cv::Exception& e) {
+        cerr << "OpenCV exception in main: " << e.what() << endl;
+        return 1;
+    } catch (const std::exception& e) {
+        cerr << "Exception in main: " << e.what() << endl;
+        return 1;
+    } catch (...) {
+        cerr << "Unknown exception in main" << endl;
+        return 1;
+    }
+}
