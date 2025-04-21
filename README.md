@@ -124,7 +124,6 @@ The demonstration video consists of four main parts:
 1. **Self-balancing** – The car automatically maintains balance even under external force disturbances.  
 2. **Remote control** – Users can control movement (forward, backward, turning) in real time through the web interface.  
 3. **Person following** – The car detects and follows a person ahead.  
-4. **Person detection** – The camera identifies and marks people in the field of view.
 
 👉 [Click here to watch the demo video on Instagram](https://www.instagram.com/reel/DIugJ1mI1mP/?igsh=MXB3c3hrdGwya2cwMg==)
 
