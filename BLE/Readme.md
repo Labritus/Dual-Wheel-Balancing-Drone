@@ -1,1 +1,1 @@
-A web application for movement control and camera feed display, developed using HTML.
+The web application for movement control and camera feed display, developed using HTML.
