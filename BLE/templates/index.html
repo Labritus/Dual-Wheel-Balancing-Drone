@@ -2,18 +2,41 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WHEELTEC BLE Control with Joystick</title>
+  <title>WHEELTEC BLE Control with Video Stream</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-    button { margin: 10px; padding: 15px 30px; font-size: 18px; }
-    #controls { margin-top: 20px; display: none; }
-    input[type=range] { width: 300px; }
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      padding: 20px; 
+      background-color: #f5f5f5;
+    }
+    button { 
+      margin: 10px; 
+      padding: 15px 30px; 
+      font-size: 18px; 
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #controls { 
+      margin-top: 20px; 
+      display: none; 
+    }
+    input[type=range] { 
+      width: 300px; 
+    }
     #joystickContainer {
       margin: 20px auto;
       position: relative;
       width: 200px; height: 200px;
       background: #f0f0f0; border-radius: 50%;
       touch-action: none;
+      border: 2px solid #ccc;
     }
     #thumb {
       position: absolute;
@@ -23,60 +46,228 @@
       transition: top 0.1s, left 0.1s;
       touch-action: none;
     }
+    .container {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .panel {
+      margin: 10px;
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    #videoFeed {
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    #connectStatus {
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .connected {
+      background-color: #dff0d8;
+      color: #3c763d;
+    }
+    .disconnected {
+      background-color: #f2dede;
+      color: #a94442;
+    }
   </style>
 </head>
 <body>
 
-  <h1>WHEELTEC Car Bluetooth Control</h1>
-  <button onclick="connect()">Connect Car</button>
-  <div id="status">Not Connected</div>
-
-  <div id="controls">
-    <h2>Speed Control</h2>
-    <input type="range" id="speed" min="0" max="100" value="50" onchange="setSpeed()"/>
-    <div>Current Speed: <span id="speedValue">50</span></div>
-
-    <h2>Joystick Control</h2>
-    <div id="joystickContainer">
-      <div id="thumb"></div>
+  <h1>WHEELTEC Car Control with People Detection</h1>
+  
+  <div class="container">
+    <!-- Video Panel -->
+    <div class="panel" style="flex: 2; min-width: 320px;">
+      <h2>People Detection Video Feed</h2>
+      <div id="videoContainer">
+        <img id="videoFeed" src="/video" alt="Video stream unavailable" width="640" height="480">
+      </div>
+      <div id="streamStatus"></div>
     </div>
-    <div>Drag the joystick to move, release to stop</div>
+    
+    <!-- Control Panel -->
+    <div class="panel" style="flex: 1; min-width: 300px;">
+      <h2>Car Control</h2>
+      <button id="connectBtn" onclick="connect()">Connect Car</button>
+      <div id="connectStatus" class="disconnected">Not Connected</div>
+      
+      <div id="controls">
+        <h3>Speed Control</h3>
+        <input type="range" id="speed" min="0" max="100" value="50" onchange="setSpeed()"/>
+        <div>Current Speed: <span id="speedValue">50</span></div>
+
+        <h3>Joystick Control</h3>
+        <div id="joystickContainer">
+          <div id="thumb"></div>
+        </div>
+        <div>Drag to move, release to stop</div>
+      </div>
+    </div>
   </div>
 
   <script>
+    // BLE Control Variables
     let device, server, service, writeCharacteristic, speedCharacteristic;
     const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
     const CMD_CHAR    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+    
+    // Video Stream Variables
+    let videoFeed = document.getElementById('videoFeed');
+    let streamStatus = document.getElementById('streamStatus');
+    let streamConnected = false;
+    
+    // Get the Raspberry Pi's IP address (or hostname)
+    function getRaspberryPiHost() {
+      // Try to get the IP from the current connection
+      // This assumes the page is being served from the Raspberry Pi
+      const currentHost = window.location.hostname;
+      return currentHost || 'raspberrypi.local'; // Fallback to mDNS name
+    }
+    
+    // Connect to the video stream
+    function connectToVideoStream() {
+      const host = getRaspberryPiHost();
+      const port = 8080; // Match the port from the C++ code
+      
+      // Update video source to point to the stream
+      videoFeed.src = `http://${host}:${port}/video`;
+      
+      // Add event listeners to monitor connection
+      videoFeed.onload = function() {
+        streamStatus.textContent = "Stream connected";
+        streamStatus.className = "connected";
+        streamConnected = true;
+      };
+      
+      videoFeed.onerror = function() {
+        streamStatus.textContent = "Stream connection failed. Retrying...";
+        streamStatus.className = "disconnected";
+        streamConnected = false;
+        
+        // Try to reconnect after a delay
+        setTimeout(connectToVideoStream, 5000);
+      };
+    }
+    
+    // Initialize video stream on page load
+    window.addEventListener('load', function() {
+      connectToVideoStream();
+      
+      // Check stream connection periodically
+      setInterval(function() {
+        if (!streamConnected) {
+          connectToVideoStream();
+        }
+      }, 10000); // Try to reconnect every 10 seconds if needed
+    });
 
+    // BLE Connection
     async function connect() {
       try {
         device = await navigator.bluetooth.requestDevice({
           filters: [{ services: [SERVICE_UUID] }]
         });
+        
+        const connectBtn = document.getElementById('connectBtn');
+        const connectStatus = document.getElementById('connectStatus');
+        
+        // Update button and status during connection
+        connectBtn.disabled = true;
+        connectBtn.textContent = "Connecting...";
+        connectStatus.textContent = "Connecting...";
+        connectStatus.className = "";
+        
         server = await device.gatt.connect();
         service = await server.getPrimaryService(SERVICE_UUID);
         writeCharacteristic = await service.getCharacteristic(CMD_CHAR);
+        
         // optional speed char
         try {
           speedCharacteristic = await service.getCharacteristic('0000ffe2-0000-1000-8000-00805f9b34fb');
-        } catch {}
-        document.getElementById("status").innerText = "Connected";
+        } catch(e) {
+          console.log("Speed characteristic not available:", e);
+        }
+        
+        // Update UI
+        connectStatus.textContent = "Connected";
+        connectStatus.className = "connected";
+        connectBtn.textContent = "Disconnect";
+        connectBtn.onclick = disconnect;
         document.getElementById("controls").style.display = "block";
+        
+        // Add disconnect event listener
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+        
       } catch (e) {
+        console.error("Connection failed:", e);
         alert("Connection failed: " + e);
+        
+        const connectStatus = document.getElementById('connectStatus');
+        connectStatus.textContent = "Connection failed";
+        connectStatus.className = "disconnected";
       }
+    }
+    
+    // Handle disconnection
+    function disconnect() {
+      if (device && device.gatt.connected) {
+        device.gatt.disconnect();
+      } else {
+        onDisconnected();
+      }
+    }
+    
+    function onDisconnected() {
+      const connectBtn = document.getElementById('connectBtn');
+      const connectStatus = document.getElementById('connectStatus');
+      
+      connectStatus.textContent = "Disconnected";
+      connectStatus.className = "disconnected";
+      connectBtn.textContent = "Connect Car";
+      connectBtn.disabled = false;
+      connectBtn.onclick = connect;
+      document.getElementById("controls").style.display = "none";
+      
+      device = null;
+      server = null;
+      service = null;
+      writeCharacteristic = null;
+      speedCharacteristic = null;
     }
 
     async function sendCommand(code) {
       if (!writeCharacteristic) return;
-      await writeCharacteristic.writeValue(Uint8Array.of(code));
+      try {
+        await writeCharacteristic.writeValue(Uint8Array.of(code));
+      } catch(e) {
+        console.error("Error sending command:", e);
+        // If we get an error, try to reconnect
+        onDisconnected();
+      }
     }
 
     function setSpeed() {
       const v = parseInt(document.getElementById("speed").value);
       document.getElementById("speedValue").innerText = v;
       if (speedCharacteristic) {
-        speedCharacteristic.writeValue(Uint8Array.of(v));
+        try {
+          speedCharacteristic.writeValue(Uint8Array.of(v));
+        } catch(e) {
+          console.error("Error setting speed:", e);
+          onDisconnected();
+        }
       }
     }
 
@@ -128,11 +319,6 @@
 
     function moveThumb(evt) {
       const rect = container.getBoundingClientRect();
-const ws = new WebSocket(`ws://${location.hostname}:9000`);
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    // 更新检测数据显示
-};
       const x = evt.clientX - rect.left - rect.width/2;
       const y = evt.clientY - rect.top - rect.height/2;
       const dist = Math.min(maxDist, Math.hypot(x,y));
@@ -157,44 +343,3 @@ ws.onmessage = (event) => {
 
 </body>
 </html>
-
-<body>
-  <div id="container">
-    <div id="videoPanel">
-      <img id="videoStream" src="http://192.168.137.233:8080" />
-    </div>
-    
-    <div id="controlPanel">
-      <!-- 原有控制界面内容 -->
-      <button onclick="connect()">Connect Car</button>
-      <div id="controls">...</div>
-    </div>
-  </div>
-</body>
-
-<style>
-  #container {
-    display: flex;
-    height: 100vh;
-  }
-  
-  #videoPanel {
-    flex: 1;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  #videoStream {
-    max-width: 100%;
-    max-height: 100%;
-  }
-  
-  #controlPanel {
-    width: 400px;
-    padding: 20px;
-    background: #f5f5f5;
-    overflow-y: auto;
-  }
-</style>
