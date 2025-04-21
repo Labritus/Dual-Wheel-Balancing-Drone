@@ -69,9 +69,17 @@ Therefore, we adopted the architecture solution of **STM32 responsible for low-l
 
 ### 5. Web Interface
 
-- Provides a web control interface, users can control the movement of the car through mobile phones or computers
-- Control commands are sent to the Raspberry Pi, which then forwards them to the STM32 controller
-- The page is simple and provides basic control buttons (such as forward, backward, turn left, turn right, etc.)
+We have built a lightweight local web control interface on the Raspberry Pi, which users can access through mobile phones or computer browsers. It is easy to operate, has a simple and beautiful interface, and supports the following two core functions:
+
+- **Real-time dashboard**
+
+  The initial version used multiple buttons to achieve basic control (forward, backward, turn left, turn right, run, stop). After optimization, we upgraded it to a disc joystick controller, which improved the control smoothness and user experience, and supported more delicate direction and speed control.
+
+- **2. Real-time video surveillance**
+
+  The page displays the camera image in real time and supports face and person recognition functions, facilitating remote monitoring and interaction.
+
+👉 A screenshot of the web interface is shown below (Figure 5):
 
 ## Demo
 ...
