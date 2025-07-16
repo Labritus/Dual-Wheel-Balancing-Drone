@@ -64,7 +64,7 @@ This optional supporting module (based on a microcontroller) aids in handling mo
 - Calculates orientation using a **Kalman filter**, and assists with real-time **stabilization** via a simple PID feedback loop.
 - Controls indicators (e.g. LEDs, OLED) and allows manual input via buttons for basic interaction or debugging.
 
-<p align="center"> <img src="./images/stm32_board.jpg" alt="STM32 Control Board" width="400"/> </p> 
+<p align="center"> <img src="./images/MCU.jpg" alt="Embedded controller board" width="400"/> </p> 
 <p align="center"><em>Figure 4: Embedded controller board with OLED, buttons, and IMU connections</em></p>
 
 ### 4. Video Transmission Module
