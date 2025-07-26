@@ -1,12 +1,13 @@
 #include "Key.hpp"
+#include "GPIOHelper.hpp"
 
 // Initialize the key (button)
 void Key::init()
 {
-    RCC->APB2ENR |= 1 << 2;        // Enable PORTA clock    
-    GPIOA->CRL &= 0XFF0FFFFF;           
-    GPIOA->CRL |= 0X00800000;           
-    GPIOA->ODR |= 1 << 5;          // Enable pull-up resistor    
+    if (!GPIOHelper::isInitialized()) {
+        GPIOHelper::init();
+    }
+    GPIOHelper::setMode(5, GPIOMode::INPUT);
 } 
 
 // Button scan, supports single and double click detection
@@ -15,12 +16,12 @@ uint8_t Key::clickNDouble(uint8_t time)
     static uint8_t flag_key, count_key, double_key;    
     static uint16_t count_single, Forever_count;
     
-    if (KEY == 0)  
+    if (GPIOHelper::getValue(5) == GPIOValue::LOW)  
         Forever_count++;           // Long press flag not set
     else        
         Forever_count = 0;
         
-    if (0 == KEY && 0 == flag_key)        
+    if (GPIOHelper::getValue(5) == GPIOValue::LOW && 0 == flag_key)        
         flag_key = 1;              // First press detected
         
     if (0 == count_key)                                            
@@ -37,7 +38,7 @@ uint8_t Key::clickNDouble(uint8_t time)
             return 2;              // Execute double-click command
         }
     }
-    if (1 == KEY)            
+    if (GPIOHelper::getValue(5) == GPIOValue::HIGH)            
         flag_key = 0, count_key = 0;
     
     if (1 == double_key)
@@ -62,12 +63,12 @@ uint8_t Key::clickNDouble(uint8_t time)
 uint8_t Key::click()
 {
     static uint8_t flag_key = 1;   // Button release flag
-    if (flag_key && KEY == 0)      // Button pressed
+    if (flag_key && GPIOHelper::getValue(5) == GPIOValue::LOW)      // Button pressed
     {
         flag_key = 0;
         return 1;                  // Return press event
     }
-    else if (1 == KEY)             
+    else if (GPIOHelper::getValue(5) == GPIOValue::HIGH)             
         flag_key = 1;
     return 0;                      // No press detected
 }
@@ -76,7 +77,7 @@ uint8_t Key::click()
 uint8_t Key::longPress()
 {
     static uint16_t Long_Press_count, Long_Press;
-    if (Long_Press == 0 && KEY == 0)  
+    if (Long_Press == 0 && GPIOHelper::getValue(5) == GPIOValue::LOW)  
         Long_Press_count++;        // Long press flag not yet set
     else                       
         Long_Press_count = 0; 

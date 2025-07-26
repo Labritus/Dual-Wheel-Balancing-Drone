@@ -68,37 +68,37 @@ extern "C" {
         float y = atan2(-acce_Y, acce_Z); // Compute angle from acceleration
 
         // --- Prediction Step ---
-        mul(2, 2, 2, 1, A, x_hat, temp_1);
-        mul(2, 1, 1, 1, B, u, temp_2);
+        mul(2, 2, 2, 1, (float*)A, (float*)x_hat, (float*)temp_1);
+        mul(2, 1, 1, 1, (float*)B, (float*)u, (float*)temp_2);
         x_hat_minus[0][0] = temp_1[0][0] + temp_2[0][0];
         x_hat_minus[1][0] = temp_1[1][0] + temp_2[1][0];
 
-        mul(2, 2, 2, 2, A, p_hat, temp_3);
-        mul(2, 2, 2, 2, temp_3, A_T, temp_4);
+        mul(2, 2, 2, 2, (float*)A, (float*)p_hat, (float*)temp_3);
+        mul(2, 2, 2, 2, (float*)temp_3, (float*)A_T, (float*)temp_4);
         p_hat_minus[0][0] = temp_4[0][0] + Q[0][0];
         p_hat_minus[0][1] = temp_4[0][1] + Q[0][1];
         p_hat_minus[1][0] = temp_4[1][0] + Q[1][0];
         p_hat_minus[1][1] = temp_4[1][1] + Q[1][1];
 
         // --- Correction Step ---
-        mul(1, 2, 2, 2, C, p_hat_minus, temp_5);
-        mul(1, 2, 2, 1, temp_5, C_T, temp_6);
+        mul(1, 2, 2, 2, (float*)C, (float*)p_hat_minus, (float*)temp_5);
+        mul(1, 2, 2, 1, (float*)temp_5, (float*)C_T, (float*)temp_6);
         temp_6[0][0] = 1.0f / (temp_6[0][0] + R[0][0]);
-        mul(2, 2, 2, 1, p_hat_minus, C_T, temp_1);
-        mul(2, 1, 1, 1, temp_1, temp_6, K);
+        mul(2, 2, 2, 1, (float*)p_hat_minus, (float*)C_T, (float*)temp_1);
+        mul(2, 1, 1, 1, (float*)temp_1, (float*)temp_6, (float*)K);
 
-        mul(1, 2, 2, 1, C, x_hat_minus, temp_6);
+        mul(1, 2, 2, 1, (float*)C, (float*)x_hat_minus, (float*)temp_6);
         temp_6[0][0] = y - temp_6[0][0];
-        mul(2, 1, 1, 1, K, temp_6, temp_1);
+        mul(2, 1, 1, 1, (float*)K, (float*)temp_6, (float*)temp_1);
         x_hat[0][0] = x_hat_minus[0][0] + temp_1[0][0];
         x_hat[1][0] = x_hat_minus[1][0] + temp_1[1][0];
 
-        mul(2, 1, 1, 2, K, C, temp_3);
+        mul(2, 1, 1, 2, (float*)K, (float*)C, (float*)temp_3);
         temp_3[0][0] = I[0][0] - temp_3[0][0];
         temp_3[0][1] = I[0][1] - temp_3[0][1];
         temp_3[1][0] = I[1][0] - temp_3[1][0];
         temp_3[1][1] = I[1][1] - temp_3[1][1];
-        mul(2, 2, 2, 2, temp_3, p_hat_minus, p_hat);
+        mul(2, 2, 2, 2, (float*)temp_3, (float*)p_hat_minus, (float*)p_hat);
 
         return x_hat[0][0];
     }
@@ -131,62 +131,60 @@ extern "C" {
         float temp_6[1][1] = {0};
         float y = atan2(-acce_X, acce_Z);
 
-        mul(2, 2, 2, 1, A, x_hat, temp_1);
-        mul(2, 1, 1, 1, B, u, temp_2);
+        mul(2, 2, 2, 1, (float*)A, (float*)x_hat, (float*)temp_1);
+        mul(2, 1, 1, 1, (float*)B, (float*)u, (float*)temp_2);
         x_hat_minus[0][0] = temp_1[0][0] + temp_2[0][0];
         x_hat_minus[1][0] = temp_1[1][0] + temp_2[1][0];
 
-        mul(2, 2, 2, 2, A, p_hat, temp_3);
-        mul(2, 2, 2, 2, temp_3, A_T, temp_4);
+        mul(2, 2, 2, 2, (float*)A, (float*)p_hat, (float*)temp_3);
+        mul(2, 2, 2, 2, (float*)temp_3, (float*)A_T, (float*)temp_4);
         p_hat_minus[0][0] = temp_4[0][0] + Q[0][0];
         p_hat_minus[0][1] = temp_4[0][1] + Q[0][1];
         p_hat_minus[1][0] = temp_4[1][0] + Q[1][0];
         p_hat_minus[1][1] = temp_4[1][1] + Q[1][1];
 
-        mul(1, 2, 2, 2, C, p_hat_minus, temp_5);
-        mul(1, 2, 2, 1, temp_5, C_T, temp_6);
+        mul(1, 2, 2, 2, (float*)C, (float*)p_hat_minus, (float*)temp_5);
+        mul(1, 2, 2, 1, (float*)temp_5, (float*)C_T, (float*)temp_6);
         temp_6[0][0] = 1.0f / (temp_6[0][0] + R[0][0]);
-        mul(2, 2, 2, 1, p_hat_minus, C_T, temp_1);
-        mul(2, 1, 1, 1, temp_1, temp_6, K);
+        mul(2, 2, 2, 1, (float*)p_hat_minus, (float*)C_T, (float*)temp_1);
+        mul(2, 1, 1, 1, (float*)temp_1, (float*)temp_6, (float*)K);
 
-        mul(1, 2, 2, 1, C, x_hat_minus, temp_6);
+        mul(1, 2, 2, 1, (float*)C, (float*)x_hat_minus, (float*)temp_6);
         temp_6[0][0] = y - temp_6[0][0];
-        mul(2, 1, 1, 1, K, temp_6, temp_1);
+        mul(2, 1, 1, 1, (float*)K, (float*)temp_6, (float*)temp_1);
         x_hat[0][0] = x_hat_minus[0][0] + temp_1[0][0];
         x_hat[1][0] = x_hat_minus[1][0] + temp_1[1][0];
 
-        mul(2, 1, 1, 2, K, C, temp_3);
+        mul(2, 1, 1, 2, (float*)K, (float*)C, (float*)temp_3);
         temp_3[0][0] = I[0][0] - temp_3[0][0];
         temp_3[0][1] = I[0][1] - temp_3[0][1];
         temp_3[1][0] = I[1][0] - temp_3[1][0];
         temp_3[1][1] = I[1][1] - temp_3[1][1];
-        mul(2, 2, 2, 2, temp_3, p_hat_minus, p_hat);
+        mul(2, 2, 2, 2, (float*)temp_3, (float*)p_hat_minus, (float*)p_hat);
 
         return x_hat[0][0];
     }
 
-    // Matrix multiplication
+    // Matrix multiplication (generic implementation for Kalman filter)
     void mul(int A_row, int A_col, int B_row, int B_col, 
-             float A[][A_col], float B[][B_col], float C[][B_col])
+             float *A, float *B, float *C)
     {
-        if (A_col == B_row)
-        {
-            for (int i = 0; i < A_row; i++)
-            {
-                for (int j = 0; j < B_col; j++)
-                {
-                    C[i][j] = 0;
-                    for (int k = 0; k < A_col; k++)
-                    {
-                        C[i][j] += A[i][k] * B[k][j];
-                    }
-                }
-            }
-        }
-        else
-        {
+        if (A_col != B_row) {
             // Error: matrix dimensions do not match
-            // printf("Error: Matrix size mismatch!");
+            return;
+        }
+        
+        for (int i = 0; i < A_row; i++) {
+            for (int j = 0; j < B_col; j++) {
+                float sum = 0.0f;
+                for (int k = 0; k < A_col; k++) {
+                    // Calculate matrix element positions
+                    float a_val = A[i * A_col + k];
+                    float b_val = B[k * B_col + j];
+                    sum += a_val * b_val;
+                }
+                C[i * B_col + j] = sum;
+            }
         }
     }
 }

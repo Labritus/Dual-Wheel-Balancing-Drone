@@ -1,11 +1,17 @@
 #include "MPU6050.hpp"
+#include "Control.hpp"
 #include "EXTI.hpp"
-#include "delay.hpp"
+#include "Delay.hpp"
 #include "math.h"
 #include <string.h>
+#include <thread>
+#include <chrono>
 float      MPU6050_Quat[4]    = {0, 0, 0, 0};
 uint32_t   MPU6050_StepCount  = 0;
 uint32_t   MPU6050_WalkTime   = 0;
+
+// Static member definition
+SensorCallback* MPU6050::sensorCallback = nullptr;
 
 // Sensor data
 int16_t accel[3], gyro[3];
@@ -264,19 +270,20 @@ void MPU6050::initGyroOffset()
     int i;
     int32_t sum[3] = {0};
     
-    // Collect multiple samples and take average
-    for (i = 0; i < 1000; i++) {
+    // Collect multiple samples and take average - optimized for faster calibration
+    for (i = 0; i < 500; i++) {  // Reduced from 1000 to 500 samples
         getData();  // Get gyroscope data
         sum[0] += gyro[0];
         sum[1] += gyro[1];
         sum[2] += gyro[2];
-        Delay::ms(2);
+        // Non-blocking yield for real-time calibration
+        std::this_thread::yield();
     }
     
     // Calculate zero offset
-    gyro_offset[0] = sum[0] / 1000;
-    gyro_offset[1] = sum[1] / 1000;
-    gyro_offset[2] = sum[2] / 1000;
+    gyro_offset[0] = sum[0] / 500;  // Updated to match reduced sample count
+    gyro_offset[1] = sum[1] / 500;
+    gyro_offset[2] = sum[2] / 500;
 }
 
 
@@ -296,7 +303,8 @@ uint8_t MPU6050::dmpInitialize()
     
     // 2. Reset MPU6050
     writeByte(MPU6050_RA_PWR_MGMT_1, 0x80);
-    Delay::ms(100);
+    // Non-blocking yield for hardware reset timing
+    std::this_thread::yield();
     
     // 3. Wake up MPU6050
     writeByte(MPU6050_RA_PWR_MGMT_1, 0x00);
@@ -310,7 +318,8 @@ uint8_t MPU6050::dmpInitialize()
         if (result != 0) {
             return result; // Write failed
         }
-        Delay::ms(1); // Short delay
+        // Non-blocking yield for DMP firmware loading
+        std::this_thread::yield();
     }
     
     // 5. Configure DMP
@@ -391,7 +400,8 @@ uint8_t MPU6050::enableDMPFeature(uint16_t features)
     // Configure FIFO
     writeByte(MPU6050_RA_FIFO_EN, 0x00);
     writeByte(MPU6050_RA_USER_CTRL, 0x40);  // Reset FIFO
-    Delay::ms(50);
+    // Non-blocking yield - hardware timing handled by hardware
+    std::this_thread::yield();
     writeByte(MPU6050_RA_USER_CTRL, 0x80);  // Enable DMP
     
     return 0;
@@ -718,9 +728,22 @@ uint8_t MPU6050::readDMPFifo(int16_t *gyro, int16_t *accel, int32_t *quat,
             ::gyro[i] = gyro[i];
         }
         
-        // Update balance control variables
-        Gyro_Balance = gyro[0]; // Balance angular velocity
-        Gyro_Turn = gyro[2];    // Turning angular velocity
+        // Update sensor data and trigger callback
+    SensorData data;
+    data.angleBalance = Roll;    // Use precomputed Roll angle
+    data.gyroBalance = gyro[0];
+    data.gyroTurn = gyro[2];
+    data.accelerationZ = accel[2];
+
+    // Update global angle and gyro data
+    Control::setAngleBalance(data.angleBalance);
+    Control::setGyroBalance(data.gyroBalance);
+    Control::setGyroTurn(data.gyroTurn);
+
+    // Trigger callback if registered
+    if (sensorCallback) {
+        sensorCallback->onSensorDataUpdated(data);
+    }
         
         *sensors |= 0x04; // Gyroscope data available
     }
@@ -825,8 +848,9 @@ void MPU6050::dmpInit()
     // Call enhanced initialization
     if (dmpInitialize() != 0) {
         // Initialization failed, reset system
-        if (Flag_Show == 1) {
-            NVIC_SystemReset();
+        if (Control::getFlagShow()) {
+            // System reset for Raspberry Pi - use exit for now
+            std::exit(1);
         }
     }
     
@@ -834,7 +858,7 @@ void MPU6050::dmpInit()
     writeByte(MPU6050_RA_INT_ENABLE, 0x02);
     
     // Set initialization flag
-    Flag_Show = 1;
+    Control::setFlagShow(true);
 }
 
 

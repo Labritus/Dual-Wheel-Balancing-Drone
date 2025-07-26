@@ -3,8 +3,6 @@
 
 #include "System.hpp"
 
-#define KEY PAin(5)
-
 class Key {
 public:
     // Initialize the key

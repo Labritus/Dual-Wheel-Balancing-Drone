@@ -3,12 +3,7 @@
 
 #include "System.hpp"
 
-// SCL and SDA pin definitions
-#define SCL PBout(6)      // SCL
-#define SDA PBout(7)      // SDA
-#define READ_SDA PBin(7)  // Input SDA
-
-// Software I2C operation functions
+// Hardware I2C operation functions (migrated from software I2C)
 class IOI2C {
 public:
     // Initialize I2C
@@ -51,13 +46,9 @@ public:
     static uint8_t writeMultiBytesToRegister(uint8_t deviceAddr, uint8_t registerAddr, uint8_t len, uint8_t* buffer);
     
 private:
-    // Set SDA as input
+    // Legacy functions - kept for API compatibility
     static void setSDAInput();
-    
-    // Set SDA as output
     static void setSDAOutput();
-    
-    // Small delay
     static void delay();
 };
 

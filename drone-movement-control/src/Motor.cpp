@@ -1,13 +1,23 @@
 #include "Motor.hpp"
+#include "GPIOHelper.hpp"
+#include <unistd.h>
+#include <fcntl.h>
+#include <fstream>
+#include <sstream>
 
 /**
  * Initialize motor control pins
  */
 void Motor::init()
 {
-    RCC->APB2ENR |= 1 << 3;        // Enable PORTB clock   
-    GPIOB->CRH &= 0X0000FFFF;      // Set PORTB12 13 14 15
-    GPIOB->CRH |= 0X22220000;      // PORTB12 13 14 15 push-pull output
+    if (!GPIOHelper::isInitialized()) {
+        GPIOHelper::init();
+    }
+    
+    GPIOHelper::setMode(12, GPIOMode::OUTPUT);  // BIN2
+    GPIOHelper::setMode(13, GPIOMode::OUTPUT);  // BIN1
+    GPIOHelper::setMode(14, GPIOMode::OUTPUT);  // AIN2
+    GPIOHelper::setMode(15, GPIOMode::OUTPUT);  // AIN1
 }
 
 /**
@@ -17,24 +27,12 @@ void Motor::init()
  */
 void Motor::pwmInit(uint16_t arr, uint16_t psc)
 {         
-    init();                         // Initialize motor control IO
+    init();
     
-    RCC->APB2ENR |= 1 << 11;       // Enable TIM1 clock    
-    RCC->APB2ENR |= 1 << 2;        // Enable PORTA clock     
-    GPIOA->CRH &= 0XFFFF0FF0;      // Configure PA8, PA11 as alternate function output
-    GPIOA->CRH |= 0X0000B00B;      // Configure PA8, PA11 as alternate function output
-    
-    TIM1->ARR = arr;               // Set auto-reload register 
-    TIM1->PSC = psc;               // Set prescaler
-    TIM1->CCMR2 |= 6 << 12;        // CH4 PWM1 mode    
-    TIM1->CCMR1 |= 6 << 4;         // CH1 PWM1 mode    
-    TIM1->CCMR2 |= 1 << 11;        // Enable CH4 preload     
-    TIM1->CCMR1 |= 1 << 3;         // Enable CH1 preload      
-    TIM1->CCER |= 1 << 12;         // Enable CH4 output       
-    TIM1->CCER |= 1 << 0;          // Enable CH1 output    
-    TIM1->BDTR |= 1 << 15;         // Required for TIM1 PWM output
-    TIM1->CR1 = 0x80;              // Enable ARPE 
-    TIM1->CR1 |= 0x01;             // Enable TIM1             
+    // Initialize hardware PWM using Linux PWM subsystem
+    // PWM0 for left motor (PWMA), PWM1 for right motor (PWMB)
+    initHardwarePWM(0, arr, psc);
+    initHardwarePWM(1, arr, psc);
 }
 
 /**
@@ -42,8 +40,8 @@ void Motor::pwmInit(uint16_t arr, uint16_t psc)
  */
 void Motor::leftForward()
 {
-    AIN1 = 1;
-    AIN2 = 0;
+    GPIOHelper::setValue(15, GPIOValue::HIGH);  // AIN1
+    GPIOHelper::setValue(14, GPIOValue::LOW);   // AIN2
 }
 
 /**
@@ -51,8 +49,8 @@ void Motor::leftForward()
  */
 void Motor::leftBackward()
 {
-    AIN1 = 0;
-    AIN2 = 1;
+    GPIOHelper::setValue(15, GPIOValue::LOW);   // AIN1
+    GPIOHelper::setValue(14, GPIOValue::HIGH);  // AIN2
 }
 
 /**
@@ -60,8 +58,8 @@ void Motor::leftBackward()
  */
 void Motor::rightForward()
 {
-    BIN1 = 1;
-    BIN2 = 0;
+    GPIOHelper::setValue(13, GPIOValue::HIGH);  // BIN1
+    GPIOHelper::setValue(12, GPIOValue::LOW);   // BIN2
 }
 
 /**
@@ -69,8 +67,8 @@ void Motor::rightForward()
  */
 void Motor::rightBackward()
 {
-    BIN1 = 0;
-    BIN2 = 1;
+    GPIOHelper::setValue(13, GPIOValue::LOW);   // BIN1
+    GPIOHelper::setValue(12, GPIOValue::HIGH);  // BIN2
 }
 
 /**
@@ -84,7 +82,7 @@ void Motor::setLeftPwm(int pwm)
     else if (pwm < 0) pwm = 0;
     
     // Set PWM value
-    PWMA = pwm;
+    setPWMValue(0, pwm);
 }
 
 /**
@@ -98,7 +96,7 @@ void Motor::setRightPwm(int pwm)
     else if (pwm < 0) pwm = 0;
     
     // Set PWM value
-    PWMB = pwm;
+    setPWMValue(1, pwm);
 }
 
 /**
@@ -134,10 +132,58 @@ void Motor::setPwm(int left_pwm, int right_pwm)
  */
 void Motor::stop()
 {
-    AIN1 = 0;
-    AIN2 = 0;
-    BIN1 = 0;
-    BIN2 = 0;
-    PWMA = 0;
-    PWMB = 0;
+    GPIOHelper::setValue(15, GPIOValue::LOW);  // AIN1
+    GPIOHelper::setValue(14, GPIOValue::LOW);  // AIN2
+    GPIOHelper::setValue(13, GPIOValue::LOW);  // BIN1
+    GPIOHelper::setValue(12, GPIOValue::LOW);  // BIN2
+    setPWMValue(0, 0);
+    setPWMValue(1, 0);
+}
+
+void Motor::initHardwarePWM(int channel, uint16_t period, uint16_t prescaler) {
+    std::string pwm_path = "/sys/class/pwm/pwmchip0/pwm" + std::to_string(channel);
+    
+    // Export PWM channel if not already exported
+    std::ofstream export_file("/sys/class/pwm/pwmchip0/export");
+    if (export_file.is_open()) {
+        export_file << channel;
+        export_file.close();
+    }
+    
+    // Set period (in nanoseconds)
+    uint32_t period_ns = (period + 1) * (prescaler + 1) * 1000 / 72;  // Assuming 72MHz base clock
+    std::ofstream period_file(pwm_path + "/period");
+    if (period_file.is_open()) {
+        period_file << period_ns;
+        period_file.close();
+    }
+    
+    // Enable PWM
+    std::ofstream enable_file(pwm_path + "/enable");
+    if (enable_file.is_open()) {
+        enable_file << "1";
+        enable_file.close();
+    }
+}
+
+void Motor::setPWMValue(int channel, int value) {
+    std::string pwm_path = "/sys/class/pwm/pwmchip0/pwm" + std::to_string(channel);
+    
+    // Read current period
+    std::ifstream period_file(pwm_path + "/period");
+    uint32_t period_ns = 0;
+    if (period_file.is_open()) {
+        period_file >> period_ns;
+        period_file.close();
+    }
+    
+    // Calculate duty cycle (value is 0-7200, scale to period)
+    uint32_t duty_cycle_ns = (value * period_ns) / 7200;
+    
+    // Set duty cycle
+    std::ofstream duty_file(pwm_path + "/duty_cycle");
+    if (duty_file.is_open()) {
+        duty_file << duty_cycle_ns;
+        duty_file.close();
+    }
 }

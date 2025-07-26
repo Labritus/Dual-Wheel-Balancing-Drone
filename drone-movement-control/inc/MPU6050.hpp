@@ -70,8 +70,15 @@ struct MPU6050_DMP_Data {
 };
 
 // MPU6050 class
+#include "CallbackInterface.hpp"
+
 class MPU6050 {
+private:
+    static SensorCallback* sensorCallback;
+
 public:
+    static void registerSensorCallback(SensorCallback* callback) { sensorCallback = callback; }
+
     // Initialize MPU6050
     static void initialize();
     

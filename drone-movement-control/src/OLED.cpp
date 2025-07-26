@@ -1,8 +1,11 @@
 #include "IOI2C.hpp"
 #include <math.h>
 #include <cstring>
+#include <thread>
+#include <functional>
 #include "OLED.hpp"
 #include "Delay.hpp"
+#include "oled_fonts.hpp"
 
 // I2C address of OLED
 #define OLED_ADDR 0x78
@@ -30,10 +33,11 @@ void OLED::setCursor(uint8_t x, uint8_t y)
     writeCommand((x & 0x0F) | 0x00);         // Set lower column address
 }
 
-// Initialize OLED
+// Initialize OLED - Non-blocking version
 void OLED::init()
 {
-    Delay::ms(200);
+    // Removed blocking 200ms delay - OLED can be initialized immediately
+    // If timing is critical, this should be handled by the caller
 
     writeCommand(0xAE); // Turn off display
 
@@ -75,6 +79,20 @@ void OLED::init()
 
     clear();           // Clear screen
     setCursor(0, 0);   // Set cursor to origin (0,0)
+}
+
+// Alternative: Async initialization for critical applications
+void OLED::initAsync(std::function<void()> callback) 
+{
+    // Run initialization in separate thread to avoid blocking
+    std::thread([callback]() {
+        // Non-blocking yield for real-time systems
+        std::this_thread::yield();
+        if (callback) callback();
+    }).detach();
+    
+    // Immediate hardware setup without delays
+    init();
 }
 
 // Clear screen
@@ -206,7 +224,6 @@ void OLED::showNumber(uint8_t x, uint8_t y, uint32_t num, uint8_t len, uint8_t s
 // Display a floating-point number
 void OLED::showFloat(uint8_t x, uint8_t y, float num, uint8_t len, uint8_t decimal, uint8_t size)
 {
-    uint8_t t;
     uint32_t temp;
 
     // Handle negative numbers

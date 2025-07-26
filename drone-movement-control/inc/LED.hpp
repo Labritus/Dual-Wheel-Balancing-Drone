@@ -3,9 +3,6 @@
 
 #include "System.hpp"
 
-// LED port definition
-#define LED PAout(4) // PA4
-
 class LED1 {
 public:
     // Initialize LED
