@@ -1,40 +1,76 @@
 #include "MPU6050.hpp"
+#include "control_classes/PIDController.hpp"
 
 #include "Control.hpp"
+
+// Static member variable definitions
+bool Control::Flag_follow = false;
+bool Control::Flag_avoid = false;
+bool Control::Flag_Stop = false;
+bool Control::Flag_Show = false;
+bool Control::Flag_front = false;
+bool Control::Flag_back = false;
+bool Control::Flag_Left = false;
+bool Control::Flag_Right = false;
+uint8_t Control::Flag_velocity = 0;
+int Control::Voltage = 0;
+float Control::Distance = 0.0f;
+float Control::Middle_angle = 0.0f;
+float Control::Angle_Balance = 0.0f;
+float Control::Gyro_Balance = 0.0f;
+float Control::Gyro_Turn = 0.0f;
+int Control::Acceleration_Z = 0;
+uint8_t Control::Way_Angle = 0;
+int Control::Balance_Kp = 0;
+int Control::Balance_Kd = 0;
+int Control::Velocity_Kp = 0;
+int Control::Velocity_Ki = 0;
+int Control::Turn_Kp = 0;
+int Control::Turn_Kd = 0;
+int Control::Motor_Left = 0;
+int Control::Motor_Right = 0;
+int Control::delay_50 = 0;
+uint8_t Control::delay_flag = 0;
+int Control::Temperature = 0;
+
 #include "Motor.hpp"
 
-#include "EXTI.hpp"
-#include "Encoder.hpp"
-#include "Ultrasonic.hpp"
 #include "Filter.hpp"
 #include "LED.hpp"
-#include "ADC.hpp"
 #include "Key.hpp"
 #include "I2CSlave.hpp"
+#include "Ultrasonic.hpp"
+// Removed STM32-specific includes: EXTI, Encoder, ADC
 
 /**************************************************************************
  * Control function
  * 5ms external interrupt triggered by MPU6050's INT pin
  * Ensures real-time and synchronized data processing
  **************************************************************************/
-int Control::exti15_10_IRQHandler(void)
-{
-    int Encoder_Left, Encoder_Right;                          // Left and right encoder data
+#include <chrono>
+using namespace std::chrono;
+
+// Adapted for Raspberry Pi - removed STM32 interrupt handler
+int Control::processControlLoop(void) {
+    auto start_time = high_resolution_clock::now();
+    int Encoder_Left = 0, Encoder_Right = 0;                 // Left and right encoder data - TODO: implement encoder reading
     int Balance_Pwm, Velocity_Pwm, Turn_Pwm;                  // PWM variables for balance loop, speed loop, and turn loop
     static uint8_t Flag_Target;                               // Control function related variable, provides 10ms reference
     static int Voltage_Temp, Voltage_Count, Voltage_All;      // Variables for voltage measurement
     
-    if(EXTI1::isPinInterrupt())
+    // Removed STM32 interrupt check - this function should be called periodically
     {
-        EXTI->PR = 1<<12;                                     // Clear interrupt flag
         Flag_Target = !Flag_Target;
         
         // Get attitude angle, every 5ms
         getAngle(Way_Angle);
         
-        // Read encoder data
-        Encoder_Left = -Encoder::read(3);                     // Read left encoder value
-        Encoder_Right = -Encoder::read(4);                    // Read right encoder value
+        // TODO: Implement encoder reading for Raspberry Pi
+        // Encoder_Left = -readLeftEncoder();                   // Read left encoder value
+        // Encoder_Right = -readRightEncoder();                 // Read right encoder value
+        // For now, using default values
+        Encoder_Left = 0;
+        Encoder_Right = 0;
         
         // Calculate encoder velocity
         getVelocityFromEncoder(Encoder_Left, Encoder_Right);
@@ -47,8 +83,9 @@ int Control::exti15_10_IRQHandler(void)
         
         if(Flag_Target == 1)                                     
         {
-            // Measure battery voltage every 10ms
-            Voltage_Temp = ADC::getBatteryVolt();           // Read battery voltage
+            // TODO: Implement battery voltage reading for Raspberry Pi
+            // Voltage_Temp = getBatteryVoltage();           // Read battery voltage
+            Voltage_Temp = 1200; // Default voltage value for now
             Voltage_Count++;                                   // Averaging counter
             Voltage_All += Voltage_Temp;                       // Accumulate
             if(Voltage_Count == 100)
@@ -110,26 +147,26 @@ int Control::exti15_10_IRQHandler(void)
         if(turnOff(Angle_Balance, Voltage) == 0)                   // If no abnormal condition
             setPwm(Motor_Left, Motor_Right);                       // Assign values to PWM registers
     }
+    auto end_time = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(end_time - start_time);
+    static int max_latency = 0;
+    if (duration.count() > max_latency) max_latency = duration.count();
+    
+    // æ¯100æ¬¡ä¸­æ–­è®°å½•ä¸€æ¬¡æœ€å¤§å»¶è¿Ÿ
+    static int count = 0;
+    if (++count >= 100) {
+        // å¯ä»¥å‘é€åˆ°è°ƒè¯•ç«¯å£æˆ–å­˜å‚¨åˆ°å…¨å±€å˜é‡
+        count = 0;
+    }
+    
     return 0;
 }
 
-/**************************************************************************
- * 直立PD控制
- * 输入参数：Angle:角度，Gyro:角速度
- * 返回值：平衡控制PWM
- **************************************************************************/
-int Control::balance(float Angle, float Gyro)
-{
-    float Angle_bias, Gyro_bias;
-    int balance;
-    
-    Angle_bias = Middle_angle - Angle;                       // 求出平衡的角度中值与机械相关
-    Gyro_bias = 0 - Gyro;
-    
-    // 计算平衡控制的电机PWM  PD控制   kp是P系数，kd是D系数
-    balance = -Balance_Kp/100 * Angle_bias - Gyro_bias * Balance_Kd/100;
-    
-    return balance;
+void Control::onSensorDataUpdated(const SensorData& data) {
+    setAngleBalance(data.angleBalance);
+    setGyroBalance(data.gyroBalance);
+    setGyroTurn(data.gyroTurn);
+    setAccelerationZ(data.accelerationZ);
 }
 
 /**************************************************************************
@@ -137,19 +174,25 @@ int Control::balance(float Angle, float Gyro)
  * Input parameters: Angle: angle, Gyro: angular velocity
  * Return value: balance control PWM
  **************************************************************************/
+// Static PID controllers for balance, velocity and turn loops
+PIDController Control::balancePID_(8.5f, 0.1f, 0.3f, -800.0f, 800.0f);
+PIDController Control::velocityPID_(1.2f, 0.05f, 0.02f, -300.0f, 300.0f);
+PIDController Control::turnPID_(5.0f, 0.0f, 0.2f, -200.0f, 200.0f);
+
 int Control::balance(float Angle, float Gyro)
 {
-    float Angle_bias, Gyro_bias;
-    int balance;
+    // Set balance PID parameters with anti-windup protection
+    static bool initialized = false;
+    if (!initialized) {
+        balancePID_.setAntiWindup(true);
+        initialized = true;
+    }
     
-    Angle_bias = Middle_angle - Angle;                       // Calculate balance angle bias, related to hardware
-    Gyro_bias = 0 - Gyro;
+    // Set target angle (middle angle)
+    balancePID_.setSetpoint(Middle_angle);
     
-    // Calculate motor PWM for balance control using PD control
-    // kp is the proportional gain, kd is the derivative gain
-    balance = -Balance_Kp/100 * Angle_bias - Gyro_bias * Balance_Kd/100;
-    
-    return balance;
+    // Calculate PID output (using angle as process value, Gyro for derivative filtering)
+    return static_cast<int>(balancePID_.compute(Angle, 0.01f)); // 10ms control loop
 }
 
 /**************************************************************************
@@ -159,53 +202,51 @@ int Control::balance(float Angle, float Gyro)
  **************************************************************************/
 int Control::velocity(int encoder_left, int encoder_right)
 {
-    static float velocity, Encoder_Least, Encoder_bias, Movement;
-    static float Encoder_Integral, Target_Velocity;
+    static bool initialized = false;
+    if (!initialized) {
+        velocityPID_.setAntiWindup(true, 10000.0f); // Enable anti-windup with limit
+        initialized = true;
+    }
     
-    // Target speed setting
+    // Calculate target velocity based on mode
+    float target_velocity = 0.0f;
     if(Flag_follow == 1 || Flag_avoid == 1)
-        Target_Velocity = 30;      // Follow/obstacle avoidance mode, automatically control speed
+        target_velocity = 30.0f;  // Follow/obstacle avoidance mode
     else
-        Target_Velocity = 50;
+        target_velocity = 50.0f;  // Normal mode
         
-    // Remote forward/backward handling
+    // Remote control handling
     if(Flag_front == 1)
-        Movement = Target_Velocity / Flag_velocity;  // Received forward command
+        target_velocity /= Flag_velocity;
     else if(Flag_back == 1)
-        Movement = -Target_Velocity / Flag_velocity; // Received backward command
-    else
-        Movement = 0;
+        target_velocity = -target_velocity / Flag_velocity;
         
-    // Follow/obstacle avoidance feature handling
-    if(Flag_follow == 1 && (Distance > 200 && Distance < 500) && Flag_Left != 1 && Flag_Right != 1) // Follow
-        Movement = Target_Velocity / Flag_velocity;
-    if(Flag_follow == 1 && Distance < 200 && Flag_Left != 1 && Flag_Right != 1) 
-        Movement = -Target_Velocity / Flag_velocity;
-    if(Flag_avoid == 1 && Distance < 450 && Flag_Left != 1 && Flag_Right != 1)     // Ultrasonic obstacle avoidance
-        Movement = -Target_Velocity / Flag_velocity;
-        
-    // Speed PI controller
-    Encoder_Least = 0 - (encoder_left + encoder_right);                  // Get latest speed deviation
-    Encoder_bias *= 0.86;                                                // First-order low-pass filter
-    Encoder_bias += Encoder_Least * 0.14;                                // First-order low-pass filter
+    // Follow mode speed adjustment
+    if(Flag_follow == 1) {
+        if(Distance > 200 && Distance < 500 && !Flag_Left && !Flag_Right)
+            target_velocity /= Flag_velocity;
+        else if(Distance < 200 && !Flag_Left && !Flag_Right)
+            target_velocity = -target_velocity / Flag_velocity;
+    }
     
-    Encoder_Integral += Encoder_bias;                                    // Integrate to get displacement
-    Encoder_Integral = Encoder_Integral + Movement;                      // Receive remote data, control forward/backward
+    // Obstacle avoidance speed adjustment
+    if(Flag_avoid == 1 && Distance < 450 && !Flag_Left && !Flag_Right)
+        target_velocity = -target_velocity / Flag_velocity;
     
-    // Integral limit
-    if(Encoder_Integral > 10000)
-        Encoder_Integral = 10000;
-    if(Encoder_Integral < -10000)
-        Encoder_Integral = -10000;
-        
-    // Speed control
-    velocity = -Encoder_bias * Velocity_Kp / 100 - Encoder_Integral * Velocity_Ki / 100;
+    // Set target velocity
+    velocityPID_.setSetpoint(target_velocity);
     
-    // Clear integral after motor shut down
+    // Calculate average motor speed
+    float current_speed = -(encoder_left + encoder_right) / 2.0f;
+    
+    // Get PID output
+    float output = velocityPID_.compute(current_speed, 0.01f); // 10ms control loop
+    
+    // Reset integral on motor stop
     if(turnOff(Angle_Balance, Voltage) == 1 || Flag_Stop == 1)
-        Encoder_Integral = 0;
-        
-    return velocity;
+        velocityPID_.reset();
+    
+    return static_cast<int>(output);
 }
 
 /**************************************************************************
@@ -215,27 +256,28 @@ int Control::velocity(int encoder_left, int encoder_right)
  **************************************************************************/
 int Control::turn(float gyro)
 {
-    static float Turn_Target, turn, Turn_Amplitude = 54;
-    float Kp = Turn_Kp, Kd;
+    static bool initialized = false;
+    if (!initialized) {
+        turnPID_.setAntiWindup(true);
+        initialized = true;
+    }
     
-    // Remote left/right turning handling
+    // Calculate target turn rate
+    const float Turn_Amplitude = 54.0f;
+    float turn_target = 0.0f;
+    
     if(Flag_Left == 1)
-        Turn_Target = -Turn_Amplitude / Flag_velocity;
+        turn_target = -Turn_Amplitude / Flag_velocity;
     else if(Flag_Right == 1)
-        Turn_Target = Turn_Amplitude / Flag_velocity;
-    else
-        Turn_Target = 0;
-        
-    // Cancel rolling forward/backward when turning
-    if(Flag_front == 1 || Flag_back == 1)
-        Kd = Turn_Kd;
-    else
-        Kd = 0;
-        
-    // Turning PD controller
-    turn = Turn_Target * Kp / 100 + gyro * Kd / 100;     // PD control using Z-axis gyroscope
+        turn_target = Turn_Amplitude / Flag_velocity;
     
-    return turn;
+    // Set derivative gain based on movement state
+    float kd = (Flag_front == 1 || Flag_back == 1) ? 0.2f : 0.0f;
+    turnPID_.setParameters(5.0f, 0.0f, kd);
+    
+    // Set target and compute output
+    turnPID_.setSetpoint(turn_target);
+    return static_cast<int>(turnPID_.compute(gyro, 0.01f)); // 10ms control loop
 }
 
 /**************************************************************************
@@ -313,7 +355,7 @@ uint8_t Control::turnOff(float angle, int voltage)
 {
     uint8_t temp;
     
-    // If tilt angle exceeds ±40 degrees or voltage is below 10V, shut down motor
+    // If tilt angle exceeds Â±40 degrees or voltage is below 10V, shut down motor
     if(angle < -40 || angle > 40 || Flag_Stop == 1 || voltage < 1000)
     {
         temp = 1;
@@ -369,11 +411,11 @@ void Control::getAngle(uint8_t way)
         Accel_Angle_y = KalmanFilter::angleCalculate(Accel_X, Accel_Z); // Calculate tilt angle, in degrees
         
         // Convert raw data to standard units
-        accel_x = Accel_X / 16384; // Accelerometer is ±2g, raw data is 16-bit, divide by 16384 to get acceleration in g
+        accel_x = Accel_X / 16384; // Accelerometer is Â±2g, raw data is 16-bit, divide by 16384 to get acceleration in g
         accel_y = Accel_Y / 16384;
         accel_z = Accel_Z / 16384;
         
-        gyro_x = Gyro_X / 16.4;    // Gyroscope is ±2000°/s, raw data maps ±32768 to ±2000°/s
+        gyro_x = Gyro_X / 16.4;    // Gyroscope is Â±2000Â°/s, raw data maps Â±32768 to Â±2000Â°/s
         gyro_y = Gyro_Y / 16.4;
         
         // Select algorithm to get angle

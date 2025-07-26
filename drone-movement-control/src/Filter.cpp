@@ -132,7 +132,3 @@ float KalmanFilter::Kalman_Filter_y(float Accel, float Gyro)
 }
 
 // Kalman filter angle calculation
-float KalmanFilter::angleCalculate(float acc_x, float acc_z)
-{
-    return atan2(acc_x, acc_z) * 180 / PI;  // Calculate angle (radians to degrees)
-}

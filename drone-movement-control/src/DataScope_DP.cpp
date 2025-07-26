@@ -26,7 +26,7 @@ void DataScope_DP::float2Byte(float *target, uint8_t *buf, uint8_t beg)
 /**
  * Write channel data into the send buffer
  * @param data Channel data
- * @param channel Select channel (1–10)
+ * @param channel Select channel (1â€“10)
  */
 void DataScope_DP::setChannelData(float data, uint8_t channel)
 {
@@ -79,13 +79,4 @@ uint8_t DataScope_DP::generateDataFrame(uint8_t channelNumber)
         }
     }
     return 0;
-}
-
-/**
- * Get the output buffer
- * @return Pointer to output buffer
- */
-uint8_t* DataScope_DP::getOutputBuffer()
-{
-    return outputBuffer;
 }
