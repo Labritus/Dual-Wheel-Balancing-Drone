@@ -3,9 +3,8 @@
 
 #include "System.hpp"
 
-// Ultrasonic sensor pin definitions
-#define TRIG PCout(1)  // Trigger signal (send)
-#define ECHO PCin(2)   // Echo signal (receive)
+// Ultrasonic sensor - GPIO pin definitions moved to implementation
+// TRIG and ECHO pins are now handled by GPIOHelper in the .cpp file
 
 class Ultrasonic {
 public:

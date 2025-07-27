@@ -1,29 +1,35 @@
 #ifndef __USART3_HPP
 #define __USART3_HPP
 
-#include "System.hpp"
+#include <stdint.h>
 
-extern uint8_t Usart3_Receive;  // Received data
-
-// USART3 Bluetooth communication class
+// USART3 driver class - adapted for Raspberry Pi
 class USART3Driver {
 public:
-    // Initialize USART3
-    static void init(uint32_t pclk2, uint32_t bound);
+    // Initialize USART3 - parameters adapted for generic use
+    static void init(uint32_t clock, uint32_t baudrate);
     
-    // Get received data
-    static uint8_t getReceiveData();
+    // Send single byte
+    static void sendByte(uint8_t byte);
     
-    // Process received command
-    static void processCommand(uint8_t command);
+    // Send data buffer
+    static void sendData(const uint8_t* data, uint32_t length);
     
-    // Interrupt handler
-    static void irqHandler();
+    // Check if data is available
+    static bool isDataAvailable();
+    
+    // Read single byte
+    static uint8_t readByte();
+    
+    // Get received data count
+    static uint32_t getReceivedCount();
+    
+    // Clear receive buffer
+    static void clearReceiveBuffer();
     
 private:
-    static uint8_t receive_data;  // Received data
+    static bool initialized_;
+    static uint32_t received_count_;
 };
-
-// External variables
 
 #endif // __USART3_HPP

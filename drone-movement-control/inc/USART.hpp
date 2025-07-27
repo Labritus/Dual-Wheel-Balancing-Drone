@@ -4,24 +4,27 @@
 #include "System.hpp"
 #include <cstdio>
 #include <cstdarg>
-#include <cstring>
-#include <cmath>
 
+// UART/Serial communication class for Raspberry Pi
 class USART {
 public:
-    // Initialize USART1
-    // pclk2: clock frequency
-    // bound: baud rate
-    static void init(uint32_t pclk2, uint32_t bound);
+    // Initialize UART communication
+    static void init();
     
-    // Send a single byte
-    static void send(uint8_t data);
+    // Printf-style formatted output to UART
+    static void printf(const char* format, ...);
     
-    // Print formatted data to serial port
-    static int printf(const char *fmt, ...);
-};
+    // Send a single character
+    static void putchar(char c);
+    
+    // Send a string
+    static void puts(const char* str);
+    
+    // Check if UART is initialized
+    static bool isInitialized() { return initialized_; }
 
-// Interrupt handler declaration
-extern "C" void USART3_IRQHandler(void);
+private:
+    static bool initialized_;
+};
 
 #endif // __USART_HPP
