@@ -1,54 +1,147 @@
 #include "Ultrasonic.hpp"
+#include "Control.hpp"
 #include "Delay.hpp"
+#include "GPIOHelper.hpp"
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include <memory>
+
+// GPIO pin definitions for Raspberry Pi
+#define TRIG_PIN 23  // GPIO 23 for TRIGGER
+#define ECHO_PIN 24  // GPIO 24 for ECHO
+
+// Non-blocking ultrasonic measurement state machine
+enum class UltrasonicState {
+    IDLE,
+    TRIGGER_SENT,
+    WAITING_FOR_ECHO_START,
+    MEASURING_ECHO_DURATION,
+    MEASUREMENT_COMPLETE,
+    TIMEOUT_ERROR
+};
+
+// Static variables for non-blocking measurement
+static std::atomic<UltrasonicState> current_state{UltrasonicState::IDLE};
+static std::chrono::high_resolution_clock::time_point trigger_time;
+static std::chrono::high_resolution_clock::time_point echo_start_time;
+static std::chrono::high_resolution_clock::time_point echo_end_time;
+static std::chrono::high_resolution_clock::time_point timeout_start;
+static constexpr int TIMEOUT_US = 30000; // 30ms timeout for real-time compliance
+static constexpr int TRIGGER_PULSE_US = 10; // 10us trigger pulse
 
 // Initialize ultrasonic sensor
 void Ultrasonic::init()
 {
-    // Initialize IO pins for ultrasonic measurement
-    RCC->APB2ENR |= 1 << 4; // Enable clock for PORTC
-
-    // Configure PC1 as output for TRIG signal
-    GPIOC->CRL &= 0xFFFFFF0F;
-    GPIOC->CRL |= 0x00000030; // PC1 push-pull output
-
-    // Configure PC2 as input for ECHO signal
-    GPIOC->CRL &= 0xFFFFF0FF;
-    GPIOC->CRL |= 0x00000800; // PC2 pull-up/down input
-    GPIOC->ODR |= 1 << 2;     // Pull-up on PC2
-
+    // Initialize GPIO for ultrasonic sensor on Raspberry Pi
+    if (!GPIOHelper::isInitialized()) {
+        GPIOHelper::init();
+    }
+    
+    // Configure GPIO pins for ultrasonic sensor
+    GPIOHelper::setMode(TRIG_PIN, GPIOMode::OUTPUT);  // TRIG pin as output
+    GPIOHelper::setMode(ECHO_PIN, GPIOMode::INPUT);   // ECHO pin as input
+    
     // Initial state: TRIG pin low
-    TRIG = 0;
+    GPIOHelper::setValue(TRIG_PIN, GPIOValue::LOW);
+    
+    // Start periodic non-blocking measurement timer (every 50ms)
+    Timer::schedulePeriodicCallback(50000, []() {
+        processUltrasonicStateMachine();
+    });
 }
 
-// Measure distance
+// Non-blocking state machine processing function
+static void processUltrasonicStateMachine()
+{
+    auto current_time = std::chrono::high_resolution_clock::now();
+    
+    switch (current_state.load()) {
+        case UltrasonicState::IDLE:
+            // Start new measurement cycle
+            GPIOHelper::setValue(TRIG_PIN, GPIOValue::HIGH);
+            trigger_time = current_time;
+            current_state.store(UltrasonicState::TRIGGER_SENT);
+            
+            // Schedule trigger pulse end using timer callback
+            Timer::scheduleCallback(TRIGGER_PULSE_US, []() {
+                GPIOHelper::setValue(TRIG_PIN, GPIOValue::LOW);
+                timeout_start = std::chrono::high_resolution_clock::now();
+                current_state.store(UltrasonicState::WAITING_FOR_ECHO_START);
+            });
+            break;
+            
+        case UltrasonicState::TRIGGER_SENT:
+            // Waiting for trigger pulse timer callback - do nothing
+            break;
+            
+        case UltrasonicState::WAITING_FOR_ECHO_START:
+            // Non-blocking check for echo start
+            if (GPIOHelper::getValue(ECHO_PIN) == GPIOValue::HIGH) {
+                echo_start_time = current_time;
+                current_state.store(UltrasonicState::MEASURING_ECHO_DURATION);
+            } else {
+                // Check for timeout
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                    current_time - timeout_start).count();
+                if (elapsed > TIMEOUT_US) {
+                    current_state.store(UltrasonicState::TIMEOUT_ERROR);
+                }
+            }
+            break;
+            
+        case UltrasonicState::MEASURING_ECHO_DURATION:
+            // Non-blocking check for echo end
+            if (GPIOHelper::getValue(ECHO_PIN) == GPIOValue::LOW) {
+                echo_end_time = current_time;
+                current_state.store(UltrasonicState::MEASUREMENT_COMPLETE);
+            } else {
+                // Check for timeout
+                auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                    current_time - echo_start_time).count();
+                if (elapsed > TIMEOUT_US) {
+                    current_state.store(UltrasonicState::TIMEOUT_ERROR);
+                }
+            }
+            break;
+            
+        case UltrasonicState::MEASUREMENT_COMPLETE:
+            // Calculate distance and report result
+            {
+                auto pulse_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                    echo_end_time - echo_start_time);
+                
+                // Distance = (time * 343 * 1000) / 2000000 = time * 0.1715
+                float distance_mm = (pulse_duration.count() * 343.0f) / 2000.0f;
+                
+                // Validate reasonable distance range (2mm to 4000mm for HC-SR04)
+                if (distance_mm >= 2.0f && distance_mm <= 4000.0f) {
+                    Control::setDistance(distance_mm);
+                } else {
+                    Control::setDistance(0); // Invalid measurement
+                }
+                
+                current_state.store(UltrasonicState::IDLE);
+            }
+            break;
+            
+        case UltrasonicState::TIMEOUT_ERROR:
+            // Report timeout error and reset
+            Control::setDistance(0); // Set invalid distance
+            current_state.store(UltrasonicState::IDLE);
+            break;
+    }
+}
+
+// Non-blocking distance measurement trigger
 void Ultrasonic::readDistance()
 {
-    uint32_t t = 0;
-
-    // Send a trigger pulse: high level pulse >10us
-    TRIG = 1;
-    Delay::us(20);
-    TRIG = 0;
-
-    // Wait for rising edge of echo signal
-    while (ECHO == 0) {
-        t++;
-        Delay::us(1);
-        if (t > 100000) return; // Timeout
+    // For compatibility - the actual measurement is now handled by 
+    // the periodic state machine. This function just ensures the 
+    // state machine is running.
+    if (current_state.load() == UltrasonicState::IDLE) {
+        // Trigger immediate measurement by calling state machine
+        processUltrasonicStateMachine();
     }
-
-    // Measure duration of echo signal
-    t = 0;
-    while (ECHO == 1) {
-        t++; 
-        Delay::us(10); // Count every 10us
-        if (t > 10000) {
-            Distance = 0;
-            return; // Timeout
-        }
-    }
-
-    // Calculate distance (unit: mm), speed of sound = 340 m/s = 0.34 mm/us
-    // t * 10us * 0.34 mm/us / 2 = t * 1.7 mm
-    Distance = t * 17 / 10; // Final distance calculation
+    // If measurement is already in progress, do nothing (non-blocking)
 }

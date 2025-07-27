@@ -1,63 +1,42 @@
 #include "USART.hpp"
+#include <iostream>
+#include <cstdio>
+#include <cstdarg>
 
-extern "C" {
-#include <stdio.h>    // For vsnprintf
-#include <stdarg.h>   // va_list, va_start, va_end
-#include <math.h>     // pow
-#include <string.h>
+bool USART::initialized_ = false;
+
+void USART::init() {
+    // For Raspberry Pi, we'll use standard output
+    // In a real implementation, this would initialize UART hardware
+    initialized_ = true;
 }
 
-// Low-level: send a single character to UART register
-static void send_char(char c) {
-    while (!(USART3->SR & (1 << 7)));  // Wait for TXE flag
-    USART3->DR = (uint8_t)c;
-}
-
-// Formatted print to UART: use vsnprintf to fill buffer, then send one char at a time
-int USART::printf(const char *fmt, ...) {
-    char buffer[256];
-    va_list args;
-    va_start(args, fmt);
-    int len = vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-
-    for (int i = 0; i < len; ++i) {
-        send_char(buffer[i]);
+void USART::printf(const char* format, ...) {
+    if (!initialized_) {
+        init();
     }
-    return len;
+    
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    fflush(stdout);
 }
 
-// Global variable definitions
-
-
-// Initialize USART1
-void USART::init(uint32_t pclk2, uint32_t bound) {
-    float temp;
-    uint16_t mantissa;
-    uint16_t fraction;
-    temp = (float)(pclk2 * 1000000) / (bound * 16); // Calculate USARTDIV
-    mantissa = temp;                        // Integer part
-    fraction = (temp - mantissa) * 16;      // Fractional part
-    mantissa <<= 4;
-    mantissa += fraction;
+void USART::putchar(char c) {
+    if (!initialized_) {
+        init();
+    }
     
-    RCC->APB2ENR |= 1 << 2;                 // Enable PORTA clock
-    RCC->APB2ENR |= 1 << 14;                // Enable USART1 clock
-    GPIOA->CRH &= 0XFFFFF00F;               // Configure IO
-    GPIOA->CRH |= 0X000008B0;               // Configure IO
-    
-    RCC->APB2RSTR |= 1 << 14;               // Reset USART1
-    RCC->APB2RSTR &= ~(1 << 14);            // Stop reset
-    
-    // Set baud rate
-    USART1->BRR = mantissa;                 // Baud rate register
-    USART1->CR1 |= 0X200C;                  // Enable USART, 1 stop bit, no parity
+    std::putchar(c);
+    fflush(stdout);
 }
 
-// Send a single byte of data
-void USART::send(uint8_t data) {
-    USART1->DR = data;
-    while ((USART1->SR & 0x40) == 0); // Wait for transmission complete
+void USART::puts(const char* str) {
+    if (!initialized_) {
+        init();
+    }
+    
+    std::puts(str);
+    fflush(stdout);
 }
-
-// Initialize USART3
