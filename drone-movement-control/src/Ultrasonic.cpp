@@ -30,6 +30,9 @@ static std::chrono::high_resolution_clock::time_point timeout_start;
 static constexpr int TIMEOUT_US = 30000; // 30ms timeout for real-time compliance
 static constexpr int TRIGGER_PULSE_US = 10; // 10us trigger pulse
 
+// Forward declaration for the state machine function
+static void processUltrasonicStateMachine();
+
 // Initialize ultrasonic sensor
 void Ultrasonic::init()
 {

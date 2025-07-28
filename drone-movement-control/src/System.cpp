@@ -160,12 +160,14 @@ void System::setPWM(uint8_t pin, uint32_t frequency, float dutyCycle) {
 }
 
 bool System::setupI2C(uint8_t bus) {
+    (void)bus; // Suppress unused parameter warning
     // I2C setup would use /dev/i2c-x devices
     // Implementation depends on specific requirements
     return true;
 }
 
 bool System::setupSPI(uint8_t bus) {
+    (void)bus; // Suppress unused parameter warning
     // SPI setup would use /dev/spidev0.x devices
     // Implementation depends on specific requirements
     return true;
