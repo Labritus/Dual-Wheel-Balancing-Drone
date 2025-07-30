@@ -84,8 +84,6 @@ This module enables intelligent interaction through simple visual analysis:
 - Upon detection, the Pi triggers appropriate behavior such as initiating movement or sending control signals to the motor handler via I2C.
 - This allows the vehicle to respond to human presence in basic interaction scenarios.
 
-📂 Implementation details can be found in the `PeopleDetection` folder.
-
 ### 6. Web Interface
 We have built a lightweight local web control interface on the Raspberry Pi, which users can access through mobile phones or computer browsers. It is easy to operate, has a simple and beautiful interface, and supports the following two core functions:
 
@@ -101,6 +99,16 @@ We have built a lightweight local web control interface on the Raspberry Pi, whi
   <img src="./images/web.png" alt="Web Control Interface" width="600"/>
 </div>
 <p align="center"><em>Figure 6: Screenshot of the web control interface</em></p>
+
+## Code Overview
+The repository is organized into several main folders. 
+### `/drone-movement-control`
+C++ control system for balancing and motion. 
+- Contains sensor reading, motor control, and balance-related logic. 
+- Provides basic hardware interfaces such as display and communication. 
+- Includes a small test framework for verifying control functions.
+
+📄 Detailed documentation is available in [`drone-movement-control/README.md`](./drone-movement-control/README.md).
 
 ## Demo Introduction
 The demonstration video consists of four main parts:  
