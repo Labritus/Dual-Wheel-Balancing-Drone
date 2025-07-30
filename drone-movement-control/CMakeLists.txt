@@ -26,7 +26,7 @@ find_package(Threads REQUIRED)
 # Find libgpiod package - require v2.0+ with new API
 find_package(PkgConfig REQUIRED)
 
-# 要求至少 libgpiod v2.0，确保有新的API（gpiod_line_request_release等）
+# At least libgpiod v2.0
 pkg_check_modules(GPIOD REQUIRED libgpiod>=2.0)
 message(STATUS "→ Found libgpiod v${GPIOD_VERSION}")
 message(STATUS "  Include dirs: ${GPIOD_INCLUDE_DIRS}")
