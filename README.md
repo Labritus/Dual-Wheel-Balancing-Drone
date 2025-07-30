@@ -122,7 +122,7 @@ Lightweight web interface built with HTML. Provides remote car movement control,
 The following screenshot shows a successful build of the control system (`balance_drone` compiled with 100% progress): 
 
 <div align="center">
-  <img src="./images/100%.jpg" alt="Build Success" width="700"/>
+  <img src="./images/100.jpg" alt="Build Success" width="700"/>
 </div>
 <p align="center"><em>Figure 7: Successful build of the control system</em></p>
 
