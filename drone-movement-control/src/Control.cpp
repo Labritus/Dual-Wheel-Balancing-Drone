@@ -152,10 +152,8 @@ int Control::processControlLoop(void) {
     static int max_latency = 0;
     if (duration.count() > max_latency) max_latency = duration.count();
     
-    // æ¯100æ¬¡ä¸­æ–­è®°å½•ä¸€æ¬¡æœ€å¤§å»¶è¿Ÿ
     static int count = 0;
     if (++count >= 100) {
-        // å¯ä»¥å‘é€åˆ°è°ƒè¯•ç«¯å£æˆ–å­˜å‚¨åˆ°å…¨å±€å˜é‡
         count = 0;
     }
     
