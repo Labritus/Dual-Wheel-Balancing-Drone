@@ -110,6 +110,22 @@ C++ control system for balancing and motion.
 
 📄 Detailed documentation is available in [`drone-movement-control/README.md`](./drone-movement-control/README.md).
 
+### `/PeopleDetection`
+People detection module using Raspberry Pi camera with OpenCV and libcamera. Detects humans with MobileNet SSD + HOG, then sends signals via I2C.
+
+📄 Detailed documentation is available in [`PeopleDetection/README.md`](./PeopleDetection/README.md).
+
+### `/BLE`
+Lightweight web interface built with HTML. Provides remote car movement control, real-time video streaming, and human recognition display.  
+
+## ✅ Build Success
+The following screenshot shows a successful build of the control system (`balance_drone` compiled with 100% progress): 
+
+<div align="center">
+  <img src="./images/success.jpg" alt="Build Success" width="700"/>
+</div>
+<p align="center"><em>Figure 7: Successful build of the control system</em></p>
+
 ## Demo Introduction
 The demonstration video consists of four main parts:  
 1. **Self-balancing** – The car automatically maintains balance even under external force disturbances.  
